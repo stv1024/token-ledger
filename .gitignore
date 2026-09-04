@@ -1,6 +1,7 @@
 node_modules/
 *.tsbuildinfo
 
-# internal docs (machine-specific), not published
+# internal docs, not published
 DEVELOPMENT_PLAN.md
-AGENTS.md
+# machine-specific / private notes for agents
+AGENTS.local.md
