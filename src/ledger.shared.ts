@@ -49,17 +49,61 @@ export const SummarySchema = z.object({
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
+export const CtxSchema = z.object({
+  used: z.number(),
+  max: z.number(),
+});
+export type Ctx = z.infer<typeof CtxSchema>;
+
+const SyncOutputSchema = z.object({
+  inFlight: InFlightSchema.nullable(),
+  records: z.array(TurnRecordSchema),
+  summary: SummarySchema,
+  /** Last known context-window usage for the agent, in or out of a turn. */
+  ctx: CtxSchema.nullable(),
+});
+export type SyncResult = z.infer<typeof SyncOutputSchema>;
+
 export const ledgerSync = defineRpc({
   name: "ledger.sync",
   input: z.object({
     agentId: z.string(),
     limit: z.number().int().positive().max(200).optional(),
   }),
-  output: z.object({
-    inFlight: InFlightSchema.nullable(),
-    records: z.array(TurnRecordSchema),
-    summary: SummarySchema,
-  }),
+  output: SyncOutputSchema,
+});
+
+export const AgentUsageRowSchema = z.object({
+  agentId: z.string(),
+  /** Agent metadata as last reported by the daemon; null when the agent is gone. */
+  title: z.string().nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  status: z.string().nullable(),
+  /** True while a turn is in flight. */
+  active: z.boolean(),
+  lastActivityAt: z.string().nullable(),
+  summary: SummarySchema,
+});
+export type AgentUsageRow = z.infer<typeof AgentUsageRowSchema>;
+
+export const OverviewGroupSchema = z.object({
+  workspaceId: z.string().nullable(),
+  workspaceName: z.string().nullable(),
+  agents: z.array(AgentUsageRowSchema),
+});
+export type OverviewGroup = z.infer<typeof OverviewGroupSchema>;
+
+const OverviewOutputSchema = z.object({
+  groups: z.array(OverviewGroupSchema),
+  totals: SummarySchema,
+});
+export type OverviewResult = z.infer<typeof OverviewOutputSchema>;
+
+export const ledgerOverview = defineRpc({
+  name: "ledger.overview",
+  input: z.object({}),
+  output: OverviewOutputSchema,
 });
 
 export const ledgerEnsure = defineRpc({

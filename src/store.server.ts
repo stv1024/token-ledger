@@ -64,6 +64,28 @@ export function lastRecordForAgent(agentId: string): TurnRecord | null {
   return null;
 }
 
+/** Per-agent totals across all retained records. */
+export function summariesByAgent(): Map<string, { summary: Summary; lastEndedAt: string | null }> {
+  const byAgent = new Map<string, { summary: Summary; lastEndedAt: string | null }>();
+  for (const record of records) {
+    let entry = byAgent.get(record.agentId);
+    if (!entry) {
+      entry = { summary: { turns: 0, input: 0, cached: 0, output: 0, costUsd: null }, lastEndedAt: null };
+      byAgent.set(record.agentId, entry);
+    }
+    entry.summary.turns += 1;
+    entry.summary.input += record.input ?? 0;
+    entry.summary.cached += record.cached ?? 0;
+    entry.summary.output += record.output ?? 0;
+    if (record.costUsd !== null) entry.summary.costUsd = (entry.summary.costUsd ?? 0) + record.costUsd;
+    if (entry.lastEndedAt === null || record.endedAt > entry.lastEndedAt) entry.lastEndedAt = record.endedAt;
+  }
+  for (const entry of byAgent.values()) {
+    if (entry.summary.costUsd !== null) entry.summary.costUsd = Number(entry.summary.costUsd.toFixed(6));
+  }
+  return byAgent;
+}
+
 export function summaryForAgent(agentId: string): Summary {
   const summary: Summary = { turns: 0, input: 0, cached: 0, output: 0, costUsd: null };
   for (const record of records) {

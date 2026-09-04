@@ -1,5 +1,6 @@
 node_modules/
 *.tsbuildinfo
 
-# internal handover doc, not published
+# internal docs (machine-specific), not published
 DEVELOPMENT_PLAN.md
+AGENTS.md

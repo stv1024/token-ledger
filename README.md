@@ -6,14 +6,20 @@ Per-turn LLM token usage for [Paseo](https://paseo.sh) agents — an agent panel
 
 ## What it shows
 
+**Per-agent panel** (workspace/explorer, bound to one session — the header names the agent and model it is tracking):
+
 - **Session summary** — total turns, input / cache / output tokens, and cost (only when the provider reports one).
-- **Turn in progress** — elapsed time, running token counts when available, and a context-window bar.
+- **Turn in progress** — elapsed time, running token counts when available, and a context-window bar. When idle, the last known context-window usage is still shown.
 - **Turn history** — one row per finished turn: status, time, duration, tokens, cost, and a data-quality mark.
+
+**Composer pill** — every live agent gets a compact pill next to its composer (`$0.43 · ctx 47%`, with a dot while a turn is running). Pressing it opens that agent's panel. With split views, each session carries its own pill, so the session↔usage binding is always visible.
+
+**Overview** (sidebar → TokenLedger) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Tapping a row jumps to that agent.
 
 ## Install
 
 ```bash
-git clone https://github.com/<owner>/token-ledger
+git clone https://github.com/stv1024/token-ledger
 cd token-ledger
 npm install
 paseo plugin install /absolute/path/to/token-ledger
@@ -43,7 +49,7 @@ Cost: some providers report a cumulative session cost. When the reported value i
 - Retention: the most recent 2,000 turns; older records are trimmed with an atomic rewrite.
 - No network calls, no telemetry, no accounts. History does not sync between machines.
 
-## Support matrix (v0.1)
+## Support matrix
 
 | Provider | Tokens | Cost |
 | --- | --- | --- |
@@ -61,7 +67,7 @@ paseo plugin reload token-ledger
 paseo plugin logs token-ledger
 ```
 
-Layout: `index.ts` registers everything; `src/aggregate.ts` is the pure aggregation core (unit-tested); `src/tracker.server.ts` subscribes to agent streams on the daemon; `src/store.server.ts` is the JSONL store; `src/panel.client.tsx` is the React Native panel.
+Layout: `index.ts` registers everything; `src/aggregate.ts` is the pure aggregation core (unit-tested); `src/tracker.server.ts` subscribes to agent streams on the daemon and serves the sync/overview RPCs; `src/store.server.ts` is the JSONL store; `src/panel.client.tsx` is the per-agent panel, `src/pill.client.tsx` the composer pill, `src/overview.client.tsx` the all-sessions surface, and `src/ui.client.tsx` shared formatting/components.
 
 ## License
 
