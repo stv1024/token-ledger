@@ -1,0 +1,5 @@
+node_modules/
+*.tsbuildinfo
+
+# internal handover doc, not published
+DEVELOPMENT_PLAN.md
