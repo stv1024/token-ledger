@@ -67,7 +67,11 @@ function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTh
           {tokens}
           {inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} call${inFlight.modelCalls > 1 ? "s" : ""}` : ""}
         </Text>
-      ) : null}
+      ) : (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontStyle: "italic" }}>
+          tokens & cost reported at turn end
+        </Text>
+      )}
       {ctx ? <CtxBar ctx={ctx} theme={theme} /> : null}
     </View>
   );
