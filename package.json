@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/aggregate.test.ts"
+    "test": "node --test src/aggregate.test.ts src/pricing.test.ts"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.7.2",

@@ -4,7 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { Ctx, InFlight, TurnRecord } from "./ledger.shared";
 import { ledgerSync } from "./ledger.shared";
-import { fmtCost, fmtDuration, fmtTime, fmtTokens, statusColor, SummaryRow, tokensLine } from "./ui.client";
+import { cacheRatio, costBreakdown } from "./pricing";
+import {
+  fmtCost,
+  fmtCostSmall,
+  fmtDuration,
+  fmtPct,
+  fmtTime,
+  fmtTokens,
+  statusColor,
+  SummaryRow,
+  tokensLine,
+  turnColumns,
+  TurnTableHeader,
+} from "./ui.client";
 
 function useElapsed(startedAt: string | null): string {
   const [now, setNow] = useState(() => Date.now());
@@ -41,6 +54,7 @@ function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
 function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTheme }) {
   const elapsed = useElapsed(inFlight.startedAt);
   const tokens = tokensLine(inFlight.input, inFlight.cached, inFlight.output);
+  const pct = fmtPct(cacheRatio(inFlight.input, inFlight.cached));
   const ctx = inFlight.ctxUsed !== null && inFlight.ctxMax !== null ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : null;
   return (
     <View
@@ -65,6 +79,7 @@ function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTh
       {tokens ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
           {tokens}
+          {pct ? ` (${pct} cached)` : ""}
           {inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} call${inFlight.modelCalls > 1 ? "s" : ""}` : ""}
         </Text>
       ) : (
@@ -77,41 +92,99 @@ function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTh
   );
 }
 
-function RecordRow({ record, theme }: { record: TurnRecord; theme: PluginTheme }) {
-  const tokens = tokensLine(record.input, record.cached, record.output);
-  const cost = fmtCost(record.costUsd);
+/** One cell of the TURNS table: tokens on top, estimated cost below. */
+function TurnCell({
+  top,
+  bottom,
+  width,
+  theme,
+}: {
+  top: string;
+  bottom: string;
+  width: { minWidth: number };
+  theme: PluginTheme;
+}) {
+  return (
+    <View style={{ ...width, alignItems: "flex-end" }}>
+      <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>{top}</Text>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
+        {bottom}
+      </Text>
+    </View>
+  );
+}
+
+function RecordRow({ record, theme, compact }: { record: TurnRecord; theme: PluginTheme; compact: boolean }) {
+  const cols = turnColumns(compact);
+  const hasUsage = record.input !== null || record.cached !== null || record.output !== null;
+  const split = costBreakdown(record);
+  const pct = fmtPct(cacheRatio(record.input, record.cached));
+  const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
   return (
     <View
       style={{
-        paddingVertical: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingVertical: 6,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
-        gap: 3,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(record.status, theme) }} />
-        <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-          {fmtTime(record.endedAt)}
-        </Text>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"], flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(record.status, theme) }} />
+          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>
+            {fmtTime(record.endedAt)}
+          </Text>
+        </View>
+        <Text
+          style={{
+            color: theme.colors.foregroundMuted,
+            fontSize: 10,
+            fontVariant: ["tabular-nums"],
+            paddingLeft: 13,
+          }}
+        >
           {fmtDuration(record.durationMs)}
-          {record.quality === "partial" ? " · ≈" : ""}
+          {record.quality === "partial" ? " ≈" : ""}
         </Text>
-        {cost ? (
-          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>{cost}</Text>
-        ) : null}
       </View>
-      <Text
-        style={{
-          color: theme.colors.foregroundMuted,
-          fontSize: 12,
-          fontVariant: ["tabular-nums"],
-          paddingLeft: 15,
-        }}
-      >
-        {tokens ?? "usage unavailable"}
-      </Text>
+      {hasUsage ? (
+        <>
+          <TurnCell
+            top={fmtTokens(record.input)}
+            bottom={split ? fmtCostSmall(split.inUsd) : "–"}
+            width={cols.in}
+            theme={theme}
+          />
+          <TurnCell
+            top={fmtTokens(record.cached)}
+            bottom={pct ? `${cacheCost}·${pct}` : cacheCost}
+            width={cols.cache}
+            theme={theme}
+          />
+          <TurnCell
+            top={fmtTokens(record.output)}
+            bottom={split ? fmtCostSmall(split.outUsd) : "–"}
+            width={cols.out}
+            theme={theme}
+          />
+        </>
+      ) : (
+        <Text
+          style={{
+            color: theme.colors.foregroundMuted,
+            fontSize: 11,
+            fontStyle: "italic",
+            minWidth: cols.in.minWidth + cols.cache.minWidth + cols.out.minWidth + 16,
+            textAlign: "right",
+          }}
+        >
+          usage unavailable
+        </Text>
+      )}
+      <TurnCell top={fmtCost(record.costUsd) ?? "–"} bottom=" " width={cols.cost} theme={theme} />
     </View>
   );
 }
@@ -161,14 +234,19 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
             {!data.inFlight && data.ctx ? <CtxBar ctx={data.ctx} theme={theme} /> : null}
           </View>
           {data.inFlight ? <InFlightCard inFlight={data.inFlight} theme={theme} /> : null}
-          <View style={{ gap: 4 }}>
+          <View style={{ gap: 2 }}>
             <Text style={styles.sectionLabel}>Turns</Text>
             {data.records.length === 0 && !data.inFlight ? (
               <Text style={styles.muted}>
                 No turns recorded yet. Usage is tracked per turn while this plugin is running.
               </Text>
             ) : (
-              data.records.map((record) => <RecordRow key={record.id} record={record} theme={theme} />)
+              <>
+                <TurnTableHeader theme={theme} compact={layout.compact} />
+                {data.records.map((record) => (
+                  <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
+                ))}
+              </>
             )}
           </View>
         </>

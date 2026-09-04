@@ -14,6 +14,21 @@ export function fmtCost(value: number | null): string | null {
   return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
 }
 
+/** Compact cost for per-component cells; "–" when unknown. */
+export function fmtCostSmall(value: number | null): string {
+  if (value === null) return "–";
+  if (value === 0) return "$0";
+  if (value >= 0.01) return `$${value.toFixed(2)}`;
+  return `$${value.toPrecision(1)}`;
+}
+
+export function fmtPct(ratio: number | null): string | null {
+  if (ratio === null) return null;
+  const pct = ratio * 100;
+  if (pct > 0 && pct < 1) return "<1%";
+  return `${Math.round(pct)}%`;
+}
+
 export function fmtDuration(ms: number | null): string {
   if (ms === null) return "–";
   const seconds = Math.round(ms / 1000);
@@ -40,6 +55,36 @@ export function statusColor(status: TurnRecord["status"], theme: PluginTheme): s
 export function tokensLine(input: number | null, cached: number | null, output: number | null): string | null {
   if (input === null && cached === null && output === null) return null;
   return `in ${fmtTokens(input)} · cache ${fmtTokens(cached)} · out ${fmtTokens(output)}`;
+}
+
+/** Column widths for the TURNS table; shared by the header and data rows. */
+export function turnColumns(compact: boolean) {
+  return {
+    in: { minWidth: compact ? 48 : 56 },
+    cache: { minWidth: compact ? 66 : 78 },
+    out: { minWidth: compact ? 48 : 56 },
+    cost: { minWidth: compact ? 46 : 54 },
+  };
+}
+
+export function TurnTableHeader({ theme, compact }: { theme: PluginTheme; compact: boolean }) {
+  const cols = turnColumns(compact);
+  const cell = {
+    color: theme.colors.foregroundMuted,
+    fontSize: 10,
+    fontWeight: "600" as const,
+    letterSpacing: 0.4,
+    textAlign: "right" as const,
+  };
+  return (
+    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, paddingVertical: 4 }}>
+      <Text style={{ ...cell, textAlign: "left", flex: 1 }}>TIME</Text>
+      <Text style={{ ...cell, ...cols.in }}>IN</Text>
+      <Text style={{ ...cell, ...cols.cache }}>CACHE</Text>
+      <Text style={{ ...cell, ...cols.out }}>OUT</Text>
+      <Text style={{ ...cell, ...cols.cost }}>COST</Text>
+    </View>
+  );
 }
 
 export function Stat({ label, value, theme }: { label: string; value: string; theme: PluginTheme }) {
