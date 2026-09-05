@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Opening the panel (composer pill or command center) now targets the explorer side pane (`location: "explorer"`), so the agent view stays visible and the ledger opens beside it. Compact layouts without an explorer pane fall back to the previous main-pane placement.
+
 ## v0.2.0 (2026-09-04)
 
 - Composer pill: each agent session shows a compact usage pill (`$cost · ctx %`) next to its composer; pressing it opens the TokenLedger panel for that agent. Registered per live agent, removed when the agent closes.

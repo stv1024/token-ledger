@@ -32,7 +32,14 @@ export default function contribute(plugin: PluginContext) {
     keywords: ["token", "usage", "cost", "ledger"],
     context: "agent",
     onSelect({ openPanel }) {
-      openPanel("ledger");
+      // Prefer the explorer side pane so the agent view stays visible on the
+      // left. Compact layouts have no explorer pane and the host throws; fall
+      // back to the default (main pane) placement there.
+      try {
+        openPanel("ledger", { location: "explorer" });
+      } catch {
+        openPanel("ledger");
+      }
     },
   });
   plugin.addCommandCenterItem({
@@ -74,7 +81,15 @@ export default function contribute(plugin: PluginContext) {
           workspaceId,
           agentId: agent.id,
           Component: TokenLedgerPill,
-          onPress: () => client.openPanel("ledger", { workspaceId, agentId: agent.id }),
+          onPress: () => {
+            // Same split-open behavior as the command-center entry: explorer
+            // side pane when available, main pane otherwise.
+            try {
+              client.openPanel("ledger", { workspaceId, agentId: agent.id, location: "explorer" });
+            } catch {
+              client.openPanel("ledger", { workspaceId, agentId: agent.id });
+            }
+          },
         }),
       );
     };
