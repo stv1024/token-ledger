@@ -1,8 +1,12 @@
 /**
  * Per-model pricing used to estimate a cost breakdown per turn. Upstream only
  * reports a total costUsd, never per-component costs, so the split shown in
- * the UI is an estimate: token counts × list price, rescaled so the three
- * components sum to the reported total when one exists.
+ * the UI is an estimate: token counts × list price. When a real total exists,
+ * the difference between it and the estimate is surfaced as `otherUsd` rather
+ * than smeared across the components — for Claude turns that residual is
+ * mostly cache writes, which Paseo drops from AgentUsage (its Claude provider
+ * only maps cache_read_input_tokens; cache creation is billed at 1.25× the
+ * input price but never reported as tokens).
  *
  * Prices are $/MTok. Cache read is billed at 0.1× the input price.
  */
@@ -31,15 +35,22 @@ export type CostBreakdown = {
   inUsd: number;
   cacheUsd: number;
   outUsd: number;
+  /**
+   * costUsd minus the list-price estimate of the three components; null when
+   * no real total was reported. Positive residual is cost the reported token
+   * counts can't account for (chiefly cache writes on Claude); a small
+   * negative residual just means the hardcoded list prices overestimate.
+   */
+  otherUsd: number | null;
 };
 
 const PER_MTOK = 1_000_000;
 
 /**
- * Estimates per-component costs for a turn. When the turn carries a real
- * total (costUsd), the estimate is rescaled so components sum to it exactly —
- * the total stays authoritative, only the split is estimated. Returns null
- * when the model has no known pricing or no token counts were reported.
+ * Estimates per-component costs for a turn at list prices. When the turn
+ * carries a real total (costUsd), the gap between total and estimate is
+ * returned as otherUsd instead of being folded into the components. Returns
+ * null when the model has no known pricing or no token counts were reported.
  */
 export function costBreakdown(turn: {
   model: string | null;
@@ -51,17 +62,11 @@ export function costBreakdown(turn: {
   const pricing = modelPricing(turn.model);
   if (!pricing) return null;
   if (turn.input === null && turn.cached === null && turn.output === null) return null;
-  let inUsd = ((turn.input ?? 0) * pricing.input) / PER_MTOK;
-  let cacheUsd = ((turn.cached ?? 0) * pricing.cacheRead) / PER_MTOK;
-  let outUsd = ((turn.output ?? 0) * pricing.output) / PER_MTOK;
-  const estimated = inUsd + cacheUsd + outUsd;
-  if (turn.costUsd !== null && estimated > 0) {
-    const scale = turn.costUsd / estimated;
-    inUsd *= scale;
-    cacheUsd *= scale;
-    outUsd *= scale;
-  }
-  return { inUsd, cacheUsd, outUsd };
+  const inUsd = ((turn.input ?? 0) * pricing.input) / PER_MTOK;
+  const cacheUsd = ((turn.cached ?? 0) * pricing.cacheRead) / PER_MTOK;
+  const outUsd = ((turn.output ?? 0) * pricing.output) / PER_MTOK;
+  const otherUsd = turn.costUsd !== null ? turn.costUsd - (inUsd + cacheUsd + outUsd) : null;
+  return { inUsd, cacheUsd, outUsd, otherUsd };
 }
 
 /** Share of prompt tokens served from cache: cached / (input + cached). */

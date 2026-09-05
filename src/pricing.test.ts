@@ -23,21 +23,35 @@ test("breakdown estimates from list prices when no total is reported", () => {
   assert.equal(split.inUsd, 5);
   assert.equal(split.cacheUsd, 0.5);
   assert.equal(split.outUsd, 25);
+  assert.equal(split.otherUsd, null);
 });
 
-test("breakdown rescales so components sum to the reported total", () => {
+test("breakdown surfaces the gap between reported total and estimate as otherUsd", () => {
   const split = costBreakdown({
     model: "claude-opus-5",
     input: 1_000_000,
     cached: 1_000_000,
     output: 1_000_000,
-    costUsd: 61, // 2× the 30.5 list-price estimate
+    costUsd: 35.5, // $5 above the 30.5 list-price estimate (e.g. unreported cache writes)
   });
   assert.ok(split);
-  assert.ok(Math.abs(split.inUsd + split.cacheUsd + split.outUsd - 61) < 1e-9);
-  assert.ok(Math.abs(split.inUsd - 10) < 1e-9);
-  assert.ok(Math.abs(split.cacheUsd - 1) < 1e-9);
-  assert.ok(Math.abs(split.outUsd - 50) < 1e-9);
+  // Components stay at list price — the residual is not smeared into them.
+  assert.equal(split.inUsd, 5);
+  assert.equal(split.cacheUsd, 0.5);
+  assert.equal(split.outUsd, 25);
+  assert.ok(split.otherUsd !== null && Math.abs(split.otherUsd - 5) < 1e-9);
+});
+
+test("otherUsd goes negative when list prices overestimate the reported total", () => {
+  const split = costBreakdown({
+    model: "claude-opus-5",
+    input: 1_000_000,
+    cached: 0,
+    output: 0,
+    costUsd: 4,
+  });
+  assert.ok(split);
+  assert.ok(split.otherUsd !== null && Math.abs(split.otherUsd - -1) < 1e-9);
 });
 
 test("breakdown is null for unknown models or missing usage", () => {
@@ -45,9 +59,9 @@ test("breakdown is null for unknown models or missing usage", () => {
   assert.equal(costBreakdown({ model: "claude-opus-5", input: null, cached: null, output: null, costUsd: 1 }), null);
 });
 
-test("zero-token turn with a real total does not divide by zero", () => {
+test("zero-token turn with a real total attributes everything to otherUsd", () => {
   const split = costBreakdown({ model: "claude-opus-5", input: 0, cached: 0, output: 0, costUsd: 0.5 });
-  assert.deepEqual(split, { inUsd: 0, cacheUsd: 0, outUsd: 0 });
+  assert.deepEqual(split, { inUsd: 0, cacheUsd: 0, outUsd: 0, otherUsd: 0.5 });
 });
 
 test("cacheRatio", () => {

@@ -22,6 +22,17 @@ export function fmtCostSmall(value: number | null): string {
   return `$${value.toPrecision(1)}`;
 }
 
+/**
+ * Signed cost residual (reported total minus list-price component estimate)
+ * for the COST cell; blank when unknown or negligible. On Claude turns a
+ * positive residual is mostly cache writes, which upstream never reports as
+ * tokens.
+ */
+export function fmtResidual(value: number | null): string {
+  if (value === null || Math.abs(value) < 0.005) return " ";
+  return `${value > 0 ? "+" : "−"}${fmtCostSmall(Math.abs(value))}`;
+}
+
 export function fmtPct(ratio: number | null): string | null {
   if (ratio === null) return null;
   const pct = ratio * 100;

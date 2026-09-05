@@ -29,6 +29,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 - 服务端 contribute 只拿到 `{ handle }`；`paseo`（PaseoApi）只在 RPC handler 里注入，但它是子进程级单例——handler 里启动的订阅会常驻。tracker 靠 `addClientSide` 在客户端连接时打一发 ensure RPC 来启动。
 - **wire 层 `agent_stream` 没有 `usage_updated`**：轮中 usage 走 `agent_update` upsert 快照（`lastUsage`/`activeTurn`），且必须先 `paseo.agents.list({ subscribe: {} })` 才会推送。turn 生命周期（started/completed/failed/canceled + turnId + 轮末 usage）走 `agents.ref(id).timeline.subscribe`。
 - usage 语义（2026-09-04 实测）：Claude 轮末 usage 是**逐轮**汇总、`totalCostUsd` 是**会话累计**（所以记录里存 delta + raw 两份）；Codex 每次模型请求报一次 `last` 值，多请求轮靠去重求和。快照会把上一轮旧 usage 回放进新一轮——tracker 用 agent 级 `lastObservation` 基线挡掉。
+- **Paseo 丢弃 `cache_creation_input_tokens`**（2026-09-05 从 app.asar 的 `providers/claude/agent.js` `buildResultUsage` ~1424 行验证）：`cachedInputTokens` 只映射 `cache_read_input_tokens`，cache write 只用于上下文窗口内部估算、不进 `AgentUsage`。后果：用户输入和工具结果（几乎全是 cache write，计费 1.25× input 价）在 IN 和 CACHE 两列都不可见，IN 通常只有零头（个位数~几十）；`costUsd` 仍准确（上游总额含 write）。pricing.ts 的分项估算按牌价直算，总额与估算的差额单列为 `otherUsd`（COST 列下方显示 `+$x.xx`）——不再 rescale 摊进分项。token 数本身的缺口需上游 Paseo 加字段，插件侧无法拿到。
 - 原则：只呈现上游报告的数字，**永不估算**；quality 标 `exact`/`partial`/`unavailable`。
 
 ## 发布

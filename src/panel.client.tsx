@@ -10,6 +10,7 @@ import {
   fmtCostSmall,
   fmtDuration,
   fmtPct,
+  fmtResidual,
   fmtTime,
   fmtTokens,
   statusColor,
@@ -184,7 +185,12 @@ function RecordRow({ record, theme, compact }: { record: TurnRecord; theme: Plug
           usage unavailable
         </Text>
       )}
-      <TurnCell top={fmtCost(record.costUsd) ?? "–"} bottom=" " width={cols.cost} theme={theme} />
+      <TurnCell
+        top={fmtCost(record.costUsd) ?? "–"}
+        bottom={fmtResidual(split?.otherUsd ?? null)}
+        width={cols.cost}
+        theme={theme}
+      />
     </View>
   );
 }
