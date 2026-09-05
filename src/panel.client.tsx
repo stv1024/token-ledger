@@ -2,7 +2,7 @@ import { useAgent, useRpc, type PluginAgentPanelProps, type PluginTheme } from "
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import type { Ctx, InFlight, TurnRecord } from "./ledger.shared";
+import type { Ctx, InFlight, TurnRow } from "./ledger.shared";
 import { ledgerSync } from "./ledger.shared";
 import { cacheRatio, costBreakdown } from "./pricing";
 import {
@@ -52,7 +52,7 @@ function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
   );
 }
 
-function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTheme }) {
+function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: number; theme: PluginTheme }) {
   const elapsed = useElapsed(inFlight.startedAt);
   const tokens = tokensLine(inFlight.input, inFlight.cached, inFlight.output);
   const pct = fmtPct(cacheRatio(inFlight.input, inFlight.cached));
@@ -71,7 +71,7 @@ function InFlightCard({ inFlight, theme }: { inFlight: InFlight; theme: PluginTh
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.accent }} />
         <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600", flex: 1 }}>
-          Turn in progress
+          Turn #{seq} in progress
         </Text>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
           {elapsed}
@@ -115,7 +115,7 @@ function TurnCell({
   );
 }
 
-function RecordRow({ record, theme, compact }: { record: TurnRecord; theme: PluginTheme; compact: boolean }) {
+function RecordRow({ record, theme, compact }: { record: TurnRow; theme: PluginTheme; compact: boolean }) {
   const cols = turnColumns(compact);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null;
   const split = costBreakdown(record);
@@ -135,6 +135,11 @@ function RecordRow({ record, theme, compact }: { record: TurnRecord; theme: Plug
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(record.status, theme) }} />
+          <Text
+            style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"], minWidth: 24 }}
+          >
+            #{record.seq}
+          </Text>
           <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>
             {fmtTime(record.endedAt)}
           </Text>
@@ -144,7 +149,7 @@ function RecordRow({ record, theme, compact }: { record: TurnRecord; theme: Plug
             color: theme.colors.foregroundMuted,
             fontSize: 10,
             fontVariant: ["tabular-nums"],
-            paddingLeft: 13,
+            paddingLeft: 43,
           }}
         >
           {fmtDuration(record.durationMs)}
@@ -239,7 +244,7 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
             <SummaryRow summary={data.summary} theme={theme} />
             {!data.inFlight && data.ctx ? <CtxBar ctx={data.ctx} theme={theme} /> : null}
           </View>
-          {data.inFlight ? <InFlightCard inFlight={data.inFlight} theme={theme} /> : null}
+          {data.inFlight ? <InFlightCard inFlight={data.inFlight} seq={data.summary.turns + 1} theme={theme} /> : null}
           <View style={{ gap: 2 }}>
             <Text style={styles.sectionLabel}>Turns</Text>
             {data.records.length === 0 && !data.inFlight ? (

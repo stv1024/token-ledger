@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- TURNS rows now show their per-agent turn number (`#N`, newest = the summary `turns` count), and the in-flight card reads `Turn #N in progress`. The list stays newest-first; the numbers make the direction self-evident and map rows to conversation turns.
 - Opening the panel (composer pill or command center) now targets the explorer side pane (`location: "explorer"`), so the agent view stays visible and the ledger opens beside it. Compact layouts without an explorer pane fall back to the previous main-pane placement.
 
 ## v0.2.0 (2026-09-04)

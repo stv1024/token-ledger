@@ -28,6 +28,10 @@ export const TurnRecordSchema = z.object({
 });
 export type TurnRecord = z.infer<typeof TurnRecordSchema>;
 
+/** A TurnRecord as served to clients, with its 1-based per-agent turn number (newest = summary.turns). */
+export const TurnRowSchema = TurnRecordSchema.extend({ seq: z.number().int().positive() });
+export type TurnRow = z.infer<typeof TurnRowSchema>;
+
 export const InFlightSchema = z.object({
   turnId: z.string().nullable(),
   startedAt: z.string(),
@@ -57,7 +61,7 @@ export type Ctx = z.infer<typeof CtxSchema>;
 
 const SyncOutputSchema = z.object({
   inFlight: InFlightSchema.nullable(),
-  records: z.array(TurnRecordSchema),
+  records: z.array(TurnRowSchema),
   summary: SummarySchema,
   /** Last known context-window usage for the agent, in or out of a turn. */
   ctx: CtxSchema.nullable(),

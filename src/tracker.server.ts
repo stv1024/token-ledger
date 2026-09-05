@@ -197,10 +197,15 @@ export async function handleSync(
   context: { paseo: PaseoApi },
 ): Promise<SyncResult> {
   await ensureTracker(context.paseo);
+  const summary = summaryForAgent(input.agentId);
   return {
     inFlight: inFlightFor(input.agentId),
-    records: recordsForAgent(input.agentId, input.limit ?? 50),
-    summary: summaryForAgent(input.agentId),
+    // recordsForAgent is newest-first, so the newest row gets seq = summary.turns.
+    records: recordsForAgent(input.agentId, input.limit ?? 50).map((record, i) => ({
+      ...record,
+      seq: summary.turns - i,
+    })),
+    summary,
     ctx: agents.get(input.agentId)?.lastCtx ?? null,
   };
 }
