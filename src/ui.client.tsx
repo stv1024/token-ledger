@@ -89,7 +89,8 @@ export function TurnTableHeader({ theme, compact }: { theme: PluginTheme; compac
   };
   return (
     <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, paddingVertical: 4 }}>
-      <Text style={{ ...cell, textAlign: "left", flex: 1 }}>TIME</Text>
+      {/* Doubles as the section title; the column holds seq + time + duration. */}
+      <Text style={{ ...cell, textAlign: "left", flex: 1 }}>TURNS</Text>
       <Text style={{ ...cell, ...cols.in }}>IN</Text>
       <Text style={{ ...cell, ...cols.cache }}>CACHE</Text>
       <Text style={{ ...cell, ...cols.out }}>OUT</Text>

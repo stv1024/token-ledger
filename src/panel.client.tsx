@@ -246,18 +246,15 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
           </View>
           {data.inFlight ? <InFlightCard inFlight={data.inFlight} seq={data.summary.turns + 1} theme={theme} /> : null}
           <View style={{ gap: 2 }}>
-            <Text style={styles.sectionLabel}>Turns</Text>
+            <TurnTableHeader theme={theme} compact={layout.compact} />
             {data.records.length === 0 && !data.inFlight ? (
               <Text style={styles.muted}>
                 No turns recorded yet. Usage is tracked per turn while this plugin is running.
               </Text>
             ) : (
-              <>
-                <TurnTableHeader theme={theme} compact={layout.compact} />
-                {data.records.map((record) => (
-                  <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
-                ))}
-              </>
+              data.records.map((record) => (
+                <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
+              ))
             )}
           </View>
         </>
