@@ -30,6 +30,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 - **wire 层 `agent_stream` 没有 `usage_updated`**：轮中 usage 走 `agent_update` upsert 快照（`lastUsage`/`activeTurn`），且必须先 `paseo.agents.list({ subscribe: {} })` 才会推送。turn 生命周期（started/completed/failed/canceled + turnId + 轮末 usage）走 `agents.ref(id).timeline.subscribe`。
 - usage 语义（2026-09-04 实测）：Claude 轮末 usage 是**逐轮**汇总、`totalCostUsd` 是**会话累计**（所以记录里存 delta + raw 两份）；Codex 每次模型请求报一次 `last` 值，多请求轮靠去重求和。快照会把上一轮旧 usage 回放进新一轮——tracker 用 agent 级 `lastObservation` 基线挡掉。
 - **Paseo 丢弃 `cache_creation_input_tokens`**（2026-09-05 从 app.asar 的 `providers/claude/agent.js` `buildResultUsage` ~1424 行验证）：`cachedInputTokens` 只映射 `cache_read_input_tokens`，cache write 只用于上下文窗口内部估算、不进 `AgentUsage`。后果：用户输入和工具结果（几乎全是 cache write，计费 1.25× input 价）在 IN 和 CACHE 两列都不可见，IN 通常只有零头（个位数~几十）；`costUsd` 仍准确（上游总额含 write）。pricing.ts 的分项估算按牌价直算，总额与估算的差额单列为 `otherUsd`（COST 列下方显示 `+$x.xx`）——不再 rescale 摊进分项。token 数本身的缺口需上游 Paseo 加字段，插件侧无法拿到。
+- **input 语义因 provider 而异**（2026-09-05 从落库记录实测）：codex/OpenAI 系的 `inputTokens` **含** cached（如 input 213818 / cached 213252，真实新增仅 566）；Claude 的 input **不含** cache read。`semantics.ts` 维护按 provider（回退 model）匹配的语义表，归一化到"input = 未命中缓存的新输入"（Anthropic 式，信息不丢失）。磁盘 ledger.jsonl 永远存上游原始值，归一化只在读取/服务层做（store 的 summary、tracker 的 handleSync 和 inFlightFor），历史记录自动被正确重解读。新接 provider：跑一轮真实 turn → 看落库记录判断 input 是否含 cached → 往 SEMANTICS_TABLE 加一行 + 测试。未知 provider 原样透传，不猜。
 - 原则：只呈现上游报告的数字，**永不估算**；quality 标 `exact`/`partial`/`unavailable`。
 
 ## 发布

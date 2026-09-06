@@ -12,7 +12,12 @@ export const TurnRecordSchema = z.object({
   endedAt: z.string(),
   durationMs: z.number().nullable(),
   status: z.enum(["completed", "failed", "canceled"]),
-  /** Turn token totals as reported upstream. Null when the provider reported nothing. */
+  /**
+   * Turn token totals. On disk these are exactly as reported upstream (some
+   * providers count cache reads inside input — see semantics.ts); rows served
+   * over RPC are normalized so input is always fresh uncached tokens.
+   * Null when the provider reported nothing.
+   */
   input: z.number().nullable(),
   cached: z.number().nullable(),
   output: z.number().nullable(),

@@ -1,6 +1,7 @@
 import type { PaseoAgentStream, PaseoApi } from "@getpaseo/client";
 import { finalizeTurn, sameTokens, tokenObservation, type Observation, type UsageLike } from "./aggregate";
 import type { AgentUsageRow, Ctx, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "./ledger.shared";
+import { freshInput, usageSemantics } from "./semantics";
 import {
   appendRecord,
   lastRecordForAgent,
@@ -169,13 +170,16 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
 }
 
 function inFlightFor(agentId: string): InFlight | null {
-  const open = agents.get(agentId)?.open;
+  const state = agents.get(agentId);
+  const open = state?.open;
   if (!open) return null;
+  const semantics = usageSemantics(state?.provider ?? null, state?.model ?? null);
   let input: number | null = null;
   let cached: number | null = null;
   let output: number | null = null;
   for (const observation of open.observations) {
-    if (observation.input !== null) input = (input ?? 0) + observation.input;
+    const fresh = freshInput(semantics, observation.input, observation.cached);
+    if (fresh !== null) input = (input ?? 0) + fresh;
     if (observation.cached !== null) cached = (cached ?? 0) + observation.cached;
     if (observation.output !== null) output = (output ?? 0) + observation.output;
   }
@@ -203,6 +207,7 @@ export async function handleSync(
     // recordsForAgent is newest-first, so the newest row gets seq = summary.turns.
     records: recordsForAgent(input.agentId, input.limit ?? 50).map((record, i) => ({
       ...record,
+      input: freshInput(usageSemantics(record.provider, record.model), record.input, record.cached),
       seq: summary.turns - i,
     })),
     summary,

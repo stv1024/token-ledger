@@ -69,7 +69,11 @@ export function costBreakdown(turn: {
   return { inUsd, cacheUsd, outUsd, otherUsd };
 }
 
-/** Share of prompt tokens served from cache: cached / (input + cached). */
+/**
+ * Share of prompt tokens served from cache: cached / (input + cached).
+ * Expects input in canonical fresh-token form (see semantics.ts) — the server
+ * normalizes inclusive-input providers before values reach clients.
+ */
 export function cacheRatio(input: number | null, cached: number | null): number | null {
   if (cached === null) return null;
   const prompt = (input ?? 0) + cached;

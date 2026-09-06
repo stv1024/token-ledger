@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { TurnRecordSchema, type Summary, type TurnRecord } from "./ledger.shared";
+import { freshInput, usageSemantics } from "./semantics";
 
 const DATA_DIR = join(process.env.PASEO_HOME ?? join(homedir(), ".paseo"), "plugins", "token-ledger");
 const DATA_FILE = join(DATA_DIR, "ledger.jsonl");
@@ -64,7 +65,7 @@ export function lastRecordForAgent(agentId: string): TurnRecord | null {
   return null;
 }
 
-/** Per-agent totals across all retained records. */
+/** Per-agent totals across all retained records; input is normalized to fresh (uncached) tokens. */
 export function summariesByAgent(): Map<string, { summary: Summary; lastEndedAt: string | null }> {
   const byAgent = new Map<string, { summary: Summary; lastEndedAt: string | null }>();
   for (const record of records) {
@@ -74,7 +75,7 @@ export function summariesByAgent(): Map<string, { summary: Summary; lastEndedAt:
       byAgent.set(record.agentId, entry);
     }
     entry.summary.turns += 1;
-    entry.summary.input += record.input ?? 0;
+    entry.summary.input += freshInput(usageSemantics(record.provider, record.model), record.input, record.cached) ?? 0;
     entry.summary.cached += record.cached ?? 0;
     entry.summary.output += record.output ?? 0;
     if (record.costUsd !== null) entry.summary.costUsd = (entry.summary.costUsd ?? 0) + record.costUsd;
@@ -91,7 +92,7 @@ export function summaryForAgent(agentId: string): Summary {
   for (const record of records) {
     if (record.agentId !== agentId) continue;
     summary.turns += 1;
-    summary.input += record.input ?? 0;
+    summary.input += freshInput(usageSemantics(record.provider, record.model), record.input, record.cached) ?? 0;
     summary.cached += record.cached ?? 0;
     summary.output += record.output ?? 0;
     if (record.costUsd !== null) summary.costUsd = (summary.costUsd ?? 0) + record.costUsd;
