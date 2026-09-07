@@ -3,7 +3,7 @@ import type { PluginCleanup, PluginContext } from "@getpaseo/plugin";
 import { ledgerEnsure, ledgerOverview, ledgerSync } from "./src/ledger.shared";
 import { TokenLedgerOverview } from "./src/overview.client";
 import { TokenLedgerPanel } from "./src/panel.client";
-import { TokenLedgerPill } from "./src/pill.client";
+import { isHostLayoutCompact, TokenLedgerPill } from "./src/pill.client";
 import { handleEnsure, handleOverview, handleSync } from "./src/tracker.server";
 
 export default function contribute(plugin: PluginContext) {
@@ -33,12 +33,13 @@ export default function contribute(plugin: PluginContext) {
     context: "agent",
     onSelect({ openPanel }) {
       // Prefer the explorer side pane so the agent view stays visible on the
-      // left. Compact layouts have no explorer pane and the host throws; fall
-      // back to the default (main pane) placement there.
-      try {
-        openPanel("ledger", { location: "explorer" });
-      } catch {
+      // left. On compact layouts the explorer pane is never rendered (and the
+      // host doesn't throw — it opens into the invisible pane), so use the
+      // default main-pane placement there.
+      if (isHostLayoutCompact()) {
         openPanel("ledger");
+      } else {
+        openPanel("ledger", { location: "explorer" });
       }
     },
   });
@@ -83,11 +84,14 @@ export default function contribute(plugin: PluginContext) {
           Component: TokenLedgerPill,
           onPress: () => {
             // Same split-open behavior as the command-center entry: explorer
-            // side pane when available, main pane otherwise.
-            try {
-              client.openPanel("ledger", { workspaceId, agentId: agent.id, location: "explorer" });
-            } catch {
+            // side pane on regular layouts, main pane on compact ones. The
+            // host does NOT throw for "explorer" on compact — it opens the
+            // panel in a pane the compact UI never renders — so this must be
+            // decided up front rather than caught.
+            if (isHostLayoutCompact()) {
               client.openPanel("ledger", { workspaceId, agentId: agent.id });
+            } else {
+              client.openPanel("ledger", { workspaceId, agentId: agent.id, location: "explorer" });
             }
           },
         }),

@@ -7,12 +7,20 @@ import { fmtCost, fmtTokens } from "./ui.client";
 
 const POLL_MS = 3000;
 
+// Last host layout hint seen by any rendered pill. onPress callbacks get no
+// props, so index.ts reads this to decide panel placement: on compact layouts
+// the explorer pane exists but is never rendered, so opening there is a no-op
+// from the user's point of view.
+let hostLayoutCompact = false;
+export const isHostLayoutCompact = () => hostLayoutCompact;
+
 /**
  * Compact per-session usage pill rendered in each agent's composer, e.g.
  * "$0.43 · ctx 47%". Pressing it opens the TokenLedger panel for the agent
  * (wired via the contribution's onPress in index.ts).
  */
-export function TokenLedgerPill({ theme, agentId }: PluginComposerPillProps) {
+export function TokenLedgerPill({ theme, agentId, layout }: PluginComposerPillProps) {
+  hostLayoutCompact = layout.compact;
   const sync = useRpc(ledgerSync);
   const [data, setData] = useState<SyncResult | null>(null);
   const syncRef = useRef(sync);
