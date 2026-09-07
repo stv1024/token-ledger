@@ -252,9 +252,17 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                 No turns recorded yet. Usage is tracked per turn while this plugin is running.
               </Text>
             ) : (
-              data.records.map((record) => (
-                <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
-              ))
+              <>
+                {data.records.map((record) => (
+                  <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
+                ))}
+                {data.records.some((record) => fmtResidual(costBreakdown(record)?.otherUsd ?? null).trim() !== "") ? (
+                  <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
+                    ± under COST: cost not covered by the reported tokens — mostly cache writes, which the provider
+                    doesn't report as token counts.
+                  </Text>
+                ) : null}
+              </>
             )}
           </View>
         </>
