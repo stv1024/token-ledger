@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Panel layout now adapts to the measured pane width instead of the host's `layout.compact` hint (which doesn't reflect the sidebar's actual width). Below 410px the TURNS table and summary row switch to tight column widths/gaps so the default sidebar pane (~320px) fits without clipping the COST column or wrapping the time/duration text. The threshold is set to the width the roomy layout actually needs, so there is no in-between state that overflows.
+
 ## v0.3.0 (2026-09-07)
 
 - Docs: README now opens with a screenshot of the per-agent panel (`docs/screenshot-panel.png`).

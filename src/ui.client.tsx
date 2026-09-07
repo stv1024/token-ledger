@@ -69,17 +69,18 @@ export function tokensLine(input: number | null, cached: number | null, output: 
 }
 
 /** Column widths for the TURNS table; shared by the header and data rows. */
-export function turnColumns(compact: boolean) {
+export function turnColumns(dense: boolean) {
   return {
-    in: { minWidth: compact ? 48 : 56 },
-    cache: { minWidth: compact ? 66 : 78 },
-    out: { minWidth: compact ? 48 : 56 },
-    cost: { minWidth: compact ? 46 : 54 },
+    in: { minWidth: dense ? 40 : 56 },
+    cache: { minWidth: dense ? 58 : 78 },
+    out: { minWidth: dense ? 42 : 56 },
+    cost: { minWidth: dense ? 44 : 54 },
+    gap: dense ? 6 : 8,
   };
 }
 
-export function TurnTableHeader({ theme, compact }: { theme: PluginTheme; compact: boolean }) {
-  const cols = turnColumns(compact);
+export function TurnTableHeader({ theme, dense }: { theme: PluginTheme; dense: boolean }) {
+  const cols = turnColumns(dense);
   const cell = {
     color: theme.colors.foregroundMuted,
     fontSize: 10,
@@ -88,7 +89,7 @@ export function TurnTableHeader({ theme, compact }: { theme: PluginTheme; compac
     textAlign: "right" as const,
   };
   return (
-    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, paddingVertical: 4 }}>
+    <View style={{ flexDirection: "row", alignItems: "baseline", gap: cols.gap, paddingVertical: 4 }}>
       {/* Doubles as the section title; the column holds seq + time + duration. */}
       <Text style={{ ...cell, textAlign: "left", flex: 1 }}>TURNS</Text>
       <Text style={{ ...cell, ...cols.in }}>IN</Text>
@@ -99,9 +100,9 @@ export function TurnTableHeader({ theme, compact }: { theme: PluginTheme; compac
   );
 }
 
-export function Stat({ label, value, theme }: { label: string; value: string; theme: PluginTheme }) {
+export function Stat({ label, value, theme, dense }: { label: string; value: string; theme: PluginTheme; dense?: boolean }) {
   return (
-    <View style={{ minWidth: 56 }}>
+    <View style={{ minWidth: dense ? 44 : 56 }}>
       <Text style={{ color: theme.colors.foreground, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
         {value}
       </Text>
@@ -110,15 +111,15 @@ export function Stat({ label, value, theme }: { label: string; value: string; th
   );
 }
 
-export function SummaryRow({ summary, theme }: { summary: Summary; theme: PluginTheme }) {
+export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme: PluginTheme; dense?: boolean }) {
   const cost = fmtCost(summary.costUsd);
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
-      <Stat label="turns" value={String(summary.turns)} theme={theme} />
-      <Stat label="input" value={fmtTokens(summary.input)} theme={theme} />
-      <Stat label="cache" value={fmtTokens(summary.cached)} theme={theme} />
-      <Stat label="output" value={fmtTokens(summary.output)} theme={theme} />
-      {cost ? <Stat label="cost" value={cost} theme={theme} /> : null}
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: dense ? 10 : 16 }}>
+      <Stat label="turns" value={String(summary.turns)} theme={theme} dense={dense} />
+      <Stat label="input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
+      <Stat label="cache" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
+      <Stat label="output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
+      {cost ? <Stat label="cost" value={cost} theme={theme} dense={dense} /> : null}
     </View>
   );
 }

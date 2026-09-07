@@ -115,41 +115,44 @@ function TurnCell({
   );
 }
 
-function RecordRow({ record, theme, compact }: { record: TurnRow; theme: PluginTheme; compact: boolean }) {
-  const cols = turnColumns(compact);
+function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginTheme; dense: boolean }) {
+  const cols = turnColumns(dense);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null;
   const split = costBreakdown(record);
   const pct = fmtPct(cacheRatio(record.input, record.cached));
   const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
+  const seqWidth = dense ? 20 : 24;
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 8,
+        gap: cols.gap,
         paddingVertical: 6,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
       }}
     >
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: dense ? 72 : 88 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(record.status, theme) }} />
           <Text
-            style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"], minWidth: 24 }}
+            style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"], minWidth: seqWidth }}
           >
             #{record.seq}
           </Text>
-          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>
+          <Text numberOfLines={1} style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>
             {fmtTime(record.endedAt)}
           </Text>
         </View>
         <Text
+          numberOfLines={1}
           style={{
             color: theme.colors.foregroundMuted,
             fontSize: 10,
             fontVariant: ["tabular-nums"],
-            paddingLeft: 43,
+            // Align under the time text: dot(7) + gap(6) + seq col + gap(6).
+            paddingLeft: 19 + seqWidth,
           }}
         >
           {fmtDuration(record.durationMs)}
@@ -183,7 +186,7 @@ function RecordRow({ record, theme, compact }: { record: TurnRow; theme: PluginT
             color: theme.colors.foregroundMuted,
             fontSize: 11,
             fontStyle: "italic",
-            minWidth: cols.in.minWidth + cols.cache.minWidth + cols.out.minWidth + 16,
+            minWidth: cols.in.minWidth + cols.cache.minWidth + cols.out.minWidth + cols.gap * 2,
             textAlign: "right",
           }}
         >
@@ -200,8 +203,21 @@ function RecordRow({ record, theme, compact }: { record: TurnRow; theme: PluginT
   );
 }
 
+/**
+ * Panel width below which the TURNS table and summary row switch to tight
+ * column widths/gaps. The host only exposes `layout.compact`, not the actual
+ * pane width, so we measure ourselves; the default sidebar pane (~320px) is
+ * narrower than this, a user-widened pane usually isn't. Must be at least the
+ * width the roomy layout actually needs (TURNS table ≈ 404px incl. padding),
+ * or panes just past the threshold get a roomy-but-overflowing layout.
+ */
+const DENSE_MAX_WIDTH = 410;
+
 export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
   const sync = useRpc(ledgerSync);
+  // 0 until the first onLayout; fall back to the host's compact hint then.
+  const [panelWidth, setPanelWidth] = useState(0);
+  const dense = panelWidth > 0 ? panelWidth < DENSE_MAX_WIDTH : layout.compact;
   const { data, error } = useQuery({
     queryKey: ["token-ledger", agentId],
     queryFn: () => sync({ agentId }),
@@ -216,7 +232,7 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
   const styles = useMemo(
     () => ({
       screen: { flex: 1, backgroundColor: theme.colors.surface0 },
-      content: { padding: layout.compact ? 12 : 20, gap: 14 },
+      content: { padding: dense ? 10 : 20, gap: 14 },
       sectionLabel: {
         color: theme.colors.foregroundMuted,
         fontSize: 11,
@@ -226,11 +242,15 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
       },
       muted: { color: theme.colors.foregroundMuted, fontSize: 13 },
     }),
-    [theme, layout.compact],
+    [theme, dense],
   );
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      onLayout={(e) => setPanelWidth(e.nativeEvent.layout.width)}
+    >
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>
@@ -241,12 +261,12 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                 {agentLabel ?? agentId.slice(0, 8)}
               </Text>
             </View>
-            <SummaryRow summary={data.summary} theme={theme} />
+            <SummaryRow summary={data.summary} theme={theme} dense={dense} />
             {!data.inFlight && data.ctx ? <CtxBar ctx={data.ctx} theme={theme} /> : null}
           </View>
           {data.inFlight ? <InFlightCard inFlight={data.inFlight} seq={data.summary.turns + 1} theme={theme} /> : null}
           <View style={{ gap: 2 }}>
-            <TurnTableHeader theme={theme} compact={layout.compact} />
+            <TurnTableHeader theme={theme} dense={dense} />
             {data.records.length === 0 && !data.inFlight ? (
               <Text style={styles.muted}>
                 No turns recorded yet. Usage is tracked per turn while this plugin is running.
@@ -257,7 +277,7 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                   // Keyed by seq, not record.id: ids of records persisted before
                   // v0.1.x lack the endedAt component and collide across session
                   // restarts (turnId reuse), which made React render ghost rows.
-                  <RecordRow key={record.seq} record={record} theme={theme} compact={layout.compact} />
+                  <RecordRow key={record.seq} record={record} theme={theme} dense={dense} />
                 ))}
                 {data.records.some((record) => fmtResidual(costBreakdown(record)?.otherUsd ?? null).trim() !== "") ? (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
