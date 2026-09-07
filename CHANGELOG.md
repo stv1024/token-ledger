@@ -2,7 +2,7 @@
 
 ## v0.3.0 (2026-09-07)
 
-- Docs: README now opens with a screenshot of the per-agent panel (`docs/screenshot-panel.jpeg`).
+- Docs: README now opens with a screenshot of the per-agent panel (`docs/screenshot-panel.png`).
 - Fix: ghost duplicate rows in the TURNS table. Paseo turnIds (`foreground-turn-N`) restart per session, so `agentId:turnId` record ids collided across restarts and duplicate React keys made rows render twice. New records include `endedAt` in the id; rows are keyed by `seq` so pre-existing records display correctly too.
 - Fix: a stale agent snapshot arriving right after a turn's terminal event could reopen the just-closed turn and persist it twice (observed 3ms apart). The tracker now ignores snapshots whose `activeTurn` matches the last closed turnId.
 - TURNS rows now show their per-agent turn number (`#N`, newest = the summary `turns` count), and the in-flight card reads `Turn #N in progress`. The list stays newest-first; the numbers make the direction self-evident and map rows to conversation turns.
