@@ -254,7 +254,10 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
             ) : (
               <>
                 {data.records.map((record) => (
-                  <RecordRow key={record.id} record={record} theme={theme} compact={layout.compact} />
+                  // Keyed by seq, not record.id: ids of records persisted before
+                  // v0.1.x lack the endedAt component and collide across session
+                  // restarts (turnId reuse), which made React render ghost rows.
+                  <RecordRow key={record.seq} record={record} theme={theme} compact={layout.compact} />
                 ))}
                 {data.records.some((record) => fmtResidual(costBreakdown(record)?.otherUsd ?? null).trim() !== "") ? (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>

@@ -121,7 +121,9 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
 
   return {
     v: 1,
-    id: `${args.agentId}:${args.turnId ?? args.endedAt}`,
+    // endedAt is part of the id because Paseo turnIds ("foreground-turn-N")
+    // restart from 1 on every session restart — agentId:turnId alone collides.
+    id: `${args.agentId}:${args.turnId ?? "turn"}:${args.endedAt}`,
     agentId: args.agentId,
     turnId: args.turnId,
     provider: args.provider,

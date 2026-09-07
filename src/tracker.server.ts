@@ -29,6 +29,11 @@ type AgentState = {
   lastObservation: Observation | null;
   /** Last known context-window usage, retained after the turn ends. */
   lastCtx: Ctx | null;
+  /** turnId of the most recently closed turn. Snapshots arriving just after a
+   * terminal event can still carry that turn in activeTurn; without this guard
+   * noteUsage would reopen it and the next terminal event would persist a
+   * duplicate record. */
+  lastClosedTurnId: string | null;
 };
 
 const agents = new Map<string, AgentState>();
@@ -38,7 +43,7 @@ let startPromise: Promise<void> | null = null;
 function stateFor(agentId: string): AgentState {
   let state = agents.get(agentId);
   if (!state) {
-    state = { provider: null, model: null, open: null, prevSessionCostUsd: null, lastObservation: null, lastCtx: null };
+    state = { provider: null, model: null, open: null, prevSessionCostUsd: null, lastObservation: null, lastCtx: null, lastClosedTurnId: null };
     agents.set(agentId, state);
   }
   return state;
@@ -52,6 +57,7 @@ function openTurn(state: AgentState, turnId: string | null, startedAt?: string |
     lastUsage: null,
   };
   state.open = open;
+  state.lastClosedTurnId = null;
   return open;
 }
 
@@ -59,6 +65,7 @@ async function closeTurn(agentId: string, state: AgentState, status: TurnRecord[
   const open = state.open;
   if (!open) return;
   state.open = null;
+  state.lastClosedTurnId = open.turnId;
   const record = finalizeTurn({
     agentId,
     turnId: open.turnId,
@@ -131,6 +138,7 @@ function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): void {
   if (observation) state.lastObservation = observation;
   const activeTurn = snapshot.activeTurn ?? null;
   if (!state.open && !activeTurn) return; // snapshot outside any turn: baseline only
+  if (!state.open && activeTurn && activeTurn.turnId === state.lastClosedTurnId) return; // stale snapshot of a closed turn
   const open = state.open ?? openTurn(state, activeTurn?.turnId ?? null, activeTurn?.startedAt);
   open.lastUsage = usage;
   if (observation && isNew) open.observations.push(observation);

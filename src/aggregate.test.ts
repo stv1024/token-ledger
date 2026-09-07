@@ -102,7 +102,7 @@ test("cost lower than previous raw is treated as a reset, raw kept", () => {
 test("missing startedAt yields null duration", () => {
   const record = finalizeTurn({ ...base, startedAt: null });
   assert.equal(record.durationMs, null);
-  assert.equal(record.id, "agent-1:turn-1");
+  assert.equal(record.id, "agent-1:turn-1:2026-09-04T10:00:30.000Z");
 });
 
 test("sameTokens compares only token fields", () => {
