@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.3.1 (2026-09-08)
 
+- Fix: pressing the composer pill (or the command center entry) on compact layouts (phone) did nothing. The v0.3.0 explorer placement assumed the host throws when no explorer pane exists; it doesn't — it silently opens the panel into a side pane the compact UI never renders. Placement is now decided up front from the host's `layout.compact` hint: main pane on compact, explorer side pane otherwise.
 - Panel layout now adapts to the measured pane width instead of the host's `layout.compact` hint (which doesn't reflect the sidebar's actual width). Below 410px the TURNS table and summary row switch to tight column widths/gaps so the default sidebar pane (~320px) fits without clipping the COST column or wrapping the time/duration text. The threshold is set to the width the roomy layout actually needs, so there is no in-between state that overflows.
 
 ## v0.3.0 (2026-09-07)
