@@ -18,6 +18,10 @@ Per-turn LLM token usage for [Paseo](https://paseo.sh) agents — an agent panel
 
 **Composer pill** — every live agent gets a compact pill next to its composer (`$0.43 · ctx 47%`, with a dot while a turn is running). Pressing it opens that agent's panel. With split views, each session carries its own pill, so the session↔usage binding is always visible.
 
+<p align="center">
+  <img src="docs/screenshot-pill.jpg" alt="TokenLedger composer pill showing cost and context usage next to the composer; pressing it opens the panel" width="560">
+</p>
+
 **Overview** (sidebar → TokenLedger) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Tapping a row jumps to that agent.
 
 ## Install
