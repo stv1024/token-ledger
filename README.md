@@ -24,6 +24,8 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 **Overview** (sidebar → TokenLedger) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Tapping a row jumps to that agent.
 
+**Timeline** — each newly finished turn gets one passive usage summary after its ledger record is saved. It uses the same normalized counts, cost source and quality marks as the panel. No polling or message replacement is involved.
+
 ## Compatibility
 
 This branch targets **Paseo 0.8.x**, on both the daemon and the app. Paseo 0.7 users should stay on `v0.3.1`. Existing `ledger.jsonl` records remain readable; no migration or deletion is required.
@@ -52,17 +54,17 @@ A "turn" is one user message through to `turn_completed`, `turn_failed`, or `tur
 | Only a single mid-turn observation | that observation | `partial` |
 | Nothing reported | nothing shown | `unavailable` |
 
-Cost uses the first available source: upstream reported cost, local override, OpenRouter reference pricing, then the small built-in fallback table. Some providers report a cumulative session cost; when it increases monotonically, the per-turn delta is attributed to the turn. The raw value remains in `sessionCostUsd`.
+Cost uses the first available source: upstream reported cost, local override, OpenRouter reference pricing, then the small built-in fallback table. Claude reports cumulative session cost, so its per-turn delta is attributed to the turn. For unverified harnesses, raw cost is retained in `sessionCostUsd` but is not treated as a known per-turn charge. Model names do not establish aggregation or cost scope.
 
-Estimated costs are marked `≈`. OpenRouter prices are references and may differ from the actual route or contract. Tiered prices use the prompt tokens visible for the whole turn, so a multi-call turn can only be approximate.
+Estimated costs are marked `≈`. OpenRouter prices are references and may differ from the actual route or contract. New Codex records retain observed request counts, so tiered prices are chosen separately for each request. Historical records without request detail use the aggregate prompt as an approximate fallback.
 
-Paseo 0.8.0 still omits Claude cache-write token counts. Reported cost includes them, so the residual under COST can be positive even when IN is small. Codex input includes cache reads; the UI subtracts those reads while the ledger retains raw counts. Identical consecutive usage snapshots cannot be distinguished from separate equal-size model calls, so Codex totals remain `partial`. Reloading during a turn may miss earlier observations; there is no historical backfill.
+Paseo 0.8.0 still omits Claude cache-write token counts. Reported cost includes them, so the residual under COST can be positive even when IN is small. Codex input includes cache reads; the UI subtracts those reads while the ledger retains raw counts. Identical consecutive usage snapshots cannot be distinguished from separate equal-size model calls, so Codex totals remain `partial`. Open-turn observations, session identity and billing baselines are checkpointed locally, and graceful plugin reloads preserve them. A crash can lose observations since the last checkpoint; events missed while the plugin was offline cannot be reconstructed. Interrupted recovered turns are marked as partial/unavailable rather than claiming an exact offline outcome.
 
 When observed, the provider session ID is retained to distinguish billing resets from resumes. This optional field is compatible with existing v1 records.
 
 ### Pricing overrides
 
-On first use, TokenLedger creates `~/.paseo/plugins/token-ledger/pricing.json` (or under `PASEO_HOME`). It is a USD-per-million-token table and has highest priority among estimates. Entries can be scoped by provider substring and can contain prompt-size tiers. Edit the file, then reload the plugin:
+On first use, TokenLedger creates `~/.paseo/plugins/token-ledger/pricing.json` (or under `PASEO_HOME`). It is a USD-per-million-token table and has highest priority among estimates. Entries can be scoped by provider substring and can contain prompt-size tiers. Changes to the file are picked up on the next usage request after a 30-second recheck interval; a reload also applies them immediately:
 
 ```json
 {
@@ -80,11 +82,13 @@ On first use, TokenLedger creates `~/.paseo/plugins/token-ledger/pricing.json` (
 }
 ```
 
-OpenRouter's public model catalog is cached locally for 24 hours in `openrouter-pricing.json`. If refresh fails, the last cache remains active.
+OpenRouter's public model catalog is cached locally for 24 hours in `openrouter-pricing.json`. Local/cache prices are served before network refresh completes. If refresh fails, the last cache remains active, with retries no more often than every five minutes while the plugin is in use.
 
 ## Data & privacy
 
 - Records only usage metadata: timestamps, agent ID, provider, model, token counts, cost, status, duration, quality. **Never** prompts, responses, tool arguments, file paths, or credentials.
+- `tracker-state.json` is a separate atomic checkpoint containing open-turn observations and pending ledger writes. Stable IDs make recovery appends idempotent.
+- Timeline summaries are a view of newly settled turns, not the authoritative history: Paseo keeps plugin timeline entries in daemon memory. No old entries are backfilled on restart, because appending would place them at the end and change activity ordering.
 - Stored locally as JSON Lines at `~/.paseo/plugins/token-ledger/ledger.jsonl` (respects `PASEO_HOME`).
 - Retention: the most recent 2,000 turns; older records are trimmed with an atomic rewrite.
 - The only network request made by the plugin is a daily read of OpenRouter's public model-price catalog. No usage data is sent. History does not sync between machines.
@@ -95,7 +99,7 @@ OpenRouter's public model catalog is cached locally for 24 hours in `openrouter-
 | --- | --- | --- |
 | Claude / claude-* variants | per-turn aggregate (`exact`) | reported when available; estimate fallback |
 | Codex / codex-* variants | summed per-request (`partial`) | estimate fallback when absent |
-| Other providers (OpenCode, Pi, ACP harnesses) | whatever they report; `unavailable` when silent | reported or estimated when model pricing matches |
+| Other providers (OpenCode, Pi, ACP harnesses) | latest observation, `partial`; `unavailable` when silent | raw cost retained; estimate when model pricing matches |
 
 ## Development
 

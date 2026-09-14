@@ -43,6 +43,15 @@ paseo agent archive <id>                                  # 测完归档，别�
 - 会话和 workspace 列表必须翻页；JSONL 追加与裁剪串行化，读错误不能一律当首次启动。
 - 0.8.0 的 Claude cache write 缺字段、Codex input 包含 cached 的语义仍然存在。
 
+## 0.8 优化后的约束
+
+- `server/journal.ts` 保存 open turn、session/cost 基线及 pending records；先写 journal 再 append JSONL，open.key 是稳定 UUID。结束 hook 无 usage，短暂等待 timeline 终值后按已观测数据结算；清理时完成已知的结束 hook。
+- `server/read-model.ts` 按 store/pricing revision 缓存归一化行与汇总；`client/data.ts` 共享 panel/pill 查询并合并未变化的 records。RPC 的空 records 配合相同 recordsRevision 表示未变化，不表示历史清空。
+- `server/catalog.ts` 复用完整 agent 目录并订阅分页 workspace 目录；总览不再每次查询只取前 200 个 agent。
+- `providerSemantics` 只按已验证 harness 匹配：Claude whole-turn + session cost；Codex request observations；未知取最新观察且标 partial，原始费用保留但不推断累计差值。model fallback 仅用于 input/cache 口径。
+- 新 Codex 记录的 requests 保留原始逐请求 token，用于逐请求价格档位；旧记录没有请求明细，只能近似。pricing.json 最后档必须无上限，档位递增；运行时重新读取无效文件会保留上一份有效价格。
+- Timeline 使用 append + addTimelineRenderer：先落盘、每轮一次、稳定 ID、最多重试一次。不要高频更新或全历史回填；append 会改变 agent.updatedAt，且 plugin rows 不保证 daemon 重启后保留。JSONL 是权威账本。
+
 ## 发布
 
 仓库 `stv1024/token-ledger`。发版打 tag（如 `v0.1.1`）+ GitHub Release，用户侧用 `paseo plugin add stv1024/token-ledger --ref <tag>` 安装。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。

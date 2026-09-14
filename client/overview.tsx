@@ -1,3 +1,4 @@
+import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useMemo } from "react";
@@ -70,11 +71,12 @@ function AgentRow({
 
 export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurfaceProps) {
   const { data, error } = useOverview();
+  const { dense, setWidth } = useDenseLayout(layout.compact);
 
   const styles = useMemo(
     () => ({
       screen: { flex: 1, backgroundColor: theme.colors.surface0 },
-      content: { padding: layout.compact ? 12 : 20, gap: 16 },
+      content: { padding: dense ? 12 : 20, gap: 16 },
       sectionLabel: {
         color: theme.colors.foregroundMuted,
         fontSize: 11,
@@ -84,18 +86,18 @@ export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurface
       },
       muted: { color: theme.colors.foregroundMuted, fontSize: 13 },
     }),
-    [theme, layout.compact],
+    [theme, dense],
   );
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <Text style={{ color: theme.colors.foreground, fontSize: 17, fontWeight: "600" }}>TokenLedger</Text>
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>
           <View style={{ gap: 8 }}>
             <Text style={styles.sectionLabel}>All sessions</Text>
-            <SummaryRow summary={data.totals} theme={theme} />
+            <SummaryRow summary={data.totals} theme={theme} dense={dense} />
           </View>
           {data.groups.length === 0 ? (
             <Text style={styles.muted}>No usage recorded yet.</Text>

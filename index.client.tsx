@@ -1,9 +1,15 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { TokenLedgerOverview } from "./client/overview.tsx";
 import { TokenLedgerPanel } from "./client/panel.tsx";
-import { contributePills, isHostLayoutCompact } from "./client/pill.tsx";
+import { contributePills } from "./client/pill.tsx";
+
+import { PanelPlacement } from "./client/layout.ts";
+import { UsageTimelineRow } from "./client/timeline.tsx";
+import { UsageTimelineSchema, USAGE_TIMELINE_KIND } from "./shared/timeline.ts";
 
 export default function contribute(client: PluginClientContext) {
+  const placement = new PanelPlacement();
+  client.addTimelineRenderer({ kind: USAGE_TIMELINE_KIND, version: 1, schema: UsageTimelineSchema, Component: UsageTimelineRow });
   client.addWorkspacePanel({
     id: "ledger",
     title: "TokenLedger",
@@ -25,16 +31,8 @@ export default function contribute(client: PluginClientContext) {
     icon: "Coins",
     keywords: ["token", "usage", "cost", "ledger"],
     context: "agent",
-    onSelect({ openPanel }) {
-      // Prefer the explorer side pane so the agent view stays visible on the
-      // left. On compact layouts the explorer pane is never rendered (and the
-      // host doesn't throw — it opens into the invisible pane), so use the
-      // default main-pane placement there.
-      if (isHostLayoutCompact()) {
-        openPanel("ledger");
-      } else {
-        openPanel("ledger", { location: "explorer" });
-      }
+    onSelect({ openPanel, agent }) {
+      openPanel("ledger", placement.options(agent.id));
     },
   });
   client.addCommandCenterItem({
@@ -47,5 +45,5 @@ export default function contribute(client: PluginClientContext) {
       openSurface("ledger-overview");
     },
   });
-  return contributePills(client);
+  return contributePills(client, placement);
 }

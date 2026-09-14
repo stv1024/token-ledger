@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Paseo 0.8 optimizations
+
+- Preserve open turns, provider sessions and billing baselines through plugin reloads with an atomic journal and idempotent append recovery. Reconcile lifecycle hooks with usage-carrying timeline events.
+- Share panel/pill queries, invalidate from agent updates, reduce idle polling, and omit unchanged history from responses. Cache enriched ledger rows and complete paginated agent/workspace catalogs.
+- Separate harness aggregation/cost contracts from model token conventions. Retain raw unknown-scope cost and price observed Codex requests independently across prompt-size tiers.
+- Serve local prices before background OpenRouter refresh; refresh expired caches and validate tier ordering. Pick up valid local pricing edits without reload.
+- Scope panel placement to mounted per-agent layouts and share measured-width compact rendering with the overview.
+- Append one passive Timeline usage summary after durable settlement, with stable-ID bounded retries and no historical backfill.
+
 ## v0.4.0 (2026-09-14) — Paseo 0.8 migration
 
 - Split runtime entries and client/server/shared directories; pin the SDK to 0.8.0 and declare 0.8.x compatibility.

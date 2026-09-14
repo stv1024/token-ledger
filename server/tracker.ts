@@ -16,7 +16,10 @@ import {
 
 import { readModel, EMPTY_SUMMARY } from "./read-model.ts";
 import { Catalog } from "./catalog.ts";
+import { TimelinePublisher } from "./timeline.ts";
 const catalog = new Catalog();
+const publisher = new TimelinePublisher();
+const liveRecords = new Set<string>();
 
 const agents = new Map<string, AgentState>();
 const subscriptions = new Map<string, PaseoAgentTimelineSubscription>();
@@ -46,6 +49,7 @@ async function drainRecords(): Promise<void> {
   for (const record of batch) {
     await appendRecord(record);
     pendingRecords.delete(record.id);
+    if (liveRecords.delete(record.id) && trackerApi && !stopped) publisher.publish(trackerApi, record);
   }
   await saveJournal(agents, pendingRecords);
 }
@@ -53,6 +57,7 @@ function persist(record: TurnRecord | null): void {
   checkpoint();
   if (!record) return;
   pendingRecords.set(record.id, record);
+  if (!record.source.startsWith("recovered_interruption:")) liveRecords.add(record.id);
   persistence = persistence.catch(() => undefined).then(drainRecords);
   void persistence.catch((error) => console.error("token-ledger: failed to persist turn", error));
 }
@@ -169,6 +174,14 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         catalog.note(agent);
         if (!agent.archivedAt && agent.status !== "closed") watchAgent(paseo, agent);
       }
+      // A checkpoint can outlive an archived/deleted agent. After a complete
+      // catalog read, remaining recovered turns cannot still be active here.
+      for (const id of recovered) {
+        const record = closeTurn(id, stateFor(id), "canceled", null, new Date().toISOString());
+        if (record) record.source = `recovered_interruption:${record.source}`;
+        persist(record);
+      }
+      recovered.clear();
       listing = false;
       changed.clear();
       await Promise.all([...subscriptions.values()].map((subscription) => subscription.ready));
@@ -194,6 +207,7 @@ export function stopTracker(): Promise<void> {
     await persistence.catch(() => undefined);
     await drainRecords();
     await flushStore();
+    await publisher.flush();
     // 0.8 schedules remote subscription updates from synchronous removers.
     // Round-trip on the same transport before the host closes it, allowing
     // those queued updates to settle instead of logging "Daemon client closed".

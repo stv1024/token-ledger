@@ -1,3 +1,4 @@
+import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { useLedger } from "./data.ts";
@@ -211,20 +212,8 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
   );
 }
 
-/**
- * Panel width below which the TURNS table and summary row switch to tight
- * column widths/gaps. The host only exposes `layout.compact`, not the actual
- * pane width, so we measure ourselves; the default sidebar pane (~320px) is
- * narrower than this, a user-widened pane usually isn't. Must be at least the
- * width the roomy layout actually needs (TURNS table ≈ 404px incl. padding),
- * or panes just past the threshold get a roomy-but-overflowing layout.
- */
-const DENSE_MAX_WIDTH = 410;
-
 export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
-  // 0 until the first onLayout; fall back to the host's compact hint then.
-  const [panelWidth, setPanelWidth] = useState(0);
-  const dense = panelWidth > 0 ? panelWidth < DENSE_MAX_WIDTH : layout.compact;
+  const { dense, setWidth } = useDenseLayout(layout.compact);
   const { data, error } = useLedger(agentId);
   // Make the panel↔agent binding visible: which session is this ledger for?
   const agentLabel = useAgent(agentId, (agent) => {
@@ -252,7 +241,7 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      onLayout={(e) => setPanelWidth(e.nativeEvent.layout.width)}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (

@@ -7,9 +7,7 @@ import { listAgents } from "../shared/agents.ts";
 import { ledgerEnsure, type SyncResult } from "../shared/ledger.ts";
 import { fmtCost, fmtTokens } from "./ui.tsx";
 
-// Default to the visible main pane until a rendered icon supplies the layout.
-let hostLayoutCompact = true;
-export const isHostLayoutCompact = () => hostLayoutCompact;
+import type { PanelPlacement } from "./layout.ts";
 
 function pillLabel({ summary, inFlight, ctx }: SyncResult): string {
   const cost = fmtCost(summary.effectiveCostUsd);
@@ -22,7 +20,7 @@ function pillLabel({ summary, inFlight, ctx }: SyncResult): string {
   return parts.join(" · ");
 }
 
-export function contributePills(client: PluginClientContext): () => void {
+export function contributePills(client: PluginClientContext, placement: PanelPlacement): () => void {
   let disposed = false;
   const pills = new Map<string, { workspaceId: string; handle: PluginButtonRegistration }>();
   const remove = (id: string) => {
@@ -35,13 +33,11 @@ export function contributePills(client: PluginClientContext): () => void {
     if (!workspaceId || agent.status === "closed" || agent.archivedAt) return remove(agent.id);
     if (pills.get(agent.id)?.workspaceId === workspaceId) return;
     remove(agent.id);
-    let compact = true;
     let handle: PluginButtonRegistration;
     // Only visible pills poll. The descriptor owns the label, the component
     // owns the icon and subscribes to the usage query while mounted.
     function UsageIcon(props: PluginButtonIconProps) {
-      compact = props.layout.compact;
-      hostLayoutCompact = compact;
+      useEffect(() => placement.observe(agent.id, props.layout.compact), [props.layout.compact]);
       const { data, error } = useLedger(agent.id);
       useEffect(() => {
         handle.update({ label: error ? "Usage unavailable" : data ? pillLabel(data) : "…" });
@@ -53,7 +49,7 @@ export function contributePills(client: PluginClientContext): () => void {
       button: {
         title: "TokenLedger", icon: UsageIcon, label: "…",
         behavior: { kind: "action", onPress: () => client.openPanel("ledger", {
-          workspaceId, agentId: agent.id, ...(compact ? {} : { location: "explorer" }),
+          workspaceId, agentId: agent.id, ...placement.options(agent.id),
         }) },
       },
     });

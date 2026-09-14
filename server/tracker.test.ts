@@ -1,6 +1,6 @@
 ﻿import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PaseoApi, PaseoAgentTimelineEvent, PaseoAgentUpdate } from '@getpaseo/client';
@@ -17,12 +17,19 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
   let update: (event: PaseoAgentUpdate) => void = () => {};
   let timeline: (event: PaseoAgentTimelineEvent) => void = () => {};
   let removed = 0;
+  const published: Array<{id: string; data: {quality: string}}> = [];
   let catalogSubscriptions = 0;
   let listCalls = 0;
   const snapshot = { id: 'a', provider: 'codex', model: 'gpt-5', workspaceId: 'w', title: 'Test',
     status: 'idle', updatedAt: '2026-09-14T00:00:00Z', lastUsage: undefined };
   const handle = { refresh: async () => snapshot, current: () => snapshot,
-    timeline: { subscribe: (fn: typeof timeline) => { timeline = fn; return Object.assign(() => { removed++; }, { ready: Promise.resolve() }); } } };
+    timeline: { append: async (item: {id: string; data: {quality: string}}) => {
+      const lines = await readFile(join(dir, "ledger.jsonl"), "utf8");
+      assert.ok(lines.includes(item.id.replace("token-ledger:", "")), "summary must follow durable append");
+      published.push(item);
+      if (published.length === 1) throw new Error("simulate uncertain transport acknowledgement");
+      return {seq: 1, epoch: "test"};
+    }, subscribe: (fn: typeof timeline) => { timeline = fn; return Object.assign(() => { removed++; }, { ready: Promise.resolve() }); } } };
   const paseo = { agents: {
     subscribe: (fn: typeof update) => { update = fn; catalogSubscriptions++; return () => { removed++; }; },
     list: async (options: {page?: {cursor?: string}}) => {
@@ -55,6 +62,9 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     await tracker.handleOverview({}, {paseo});
     assert.equal(listCalls, beforeOverview);
     await tracker.stopTracker(); assert.equal(removed, 3);
+    assert.equal(published.length, 2);
+    assert.equal(published[0].id, published[1].id);
+    assert.equal(published[1].data.quality, "partial");
     timeline({ agentId: 'a', timestamp: '2026-09-14T00:00:02Z', event: {type: 'turn_started', provider: 'codex', turnId: 't2'} });
     assert.equal(store.allRecords().length, 1);
   } finally {
