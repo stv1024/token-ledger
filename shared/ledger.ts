@@ -1,4 +1,4 @@
-import { defineRpc } from "@getpaseo/plugin/server";
+import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const TurnRecordSchema = z.object({
@@ -8,6 +8,8 @@ export const TurnRecordSchema = z.object({
   turnId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
+  /** Provider session identity, when observed; optional for pre-0.8 records. */
+  sessionId: z.string().nullable().optional(),
   startedAt: z.string().nullable(),
   endedAt: z.string(),
   durationMs: z.number().nullable(),
@@ -33,8 +35,23 @@ export const TurnRecordSchema = z.object({
 });
 export type TurnRecord = z.infer<typeof TurnRecordSchema>;
 
-/** A TurnRecord as served to clients, with its 1-based per-agent turn number (newest = summary.turns). */
-export const TurnRowSchema = TurnRecordSchema.extend({ seq: z.number().int().positive() });
+export const CostSourceSchema = z.enum(["reported", "override", "openrouter", "builtin"]);
+export type CostSource = z.infer<typeof CostSourceSchema>;
+
+export const CostBreakdownSchema = z.object({
+  inUsd: z.number(),
+  cacheUsd: z.number(),
+  outUsd: z.number(),
+  otherUsd: z.number().nullable(),
+});
+
+/** A record enriched at read time. The JSONL remains untouched and contains only upstream facts. */
+export const TurnRowSchema = TurnRecordSchema.extend({
+  seq: z.number().int().positive(),
+  effectiveCostUsd: z.number().nullable(),
+  costSource: CostSourceSchema.nullable(),
+  costBreakdown: CostBreakdownSchema.nullable(),
+});
 export type TurnRow = z.infer<typeof TurnRowSchema>;
 
 export const InFlightSchema = z.object({
@@ -55,6 +72,10 @@ export const SummarySchema = z.object({
   cached: z.number(),
   output: z.number(),
   costUsd: z.number().nullable(),
+  /** Reported + estimated costs for priced turns. */
+  effectiveCostUsd: z.number().nullable(),
+  estimatedTurns: z.number().int().nonnegative(),
+  unpricedTurns: z.number().int().nonnegative(),
 });
 export type Summary = z.infer<typeof SummarySchema>;
 

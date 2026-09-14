@@ -1,10 +1,11 @@
-import { useAgent, useRpc, type PluginAgentPanelProps, type PluginTheme } from "@getpaseo/plugin";
+import type { PluginTheme } from "@getpaseo/plugin";
+import { useAgent, useRpc, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import type { Ctx, InFlight, TurnRow } from "./ledger.shared";
-import { ledgerSync } from "./ledger.shared";
-import { cacheRatio, costBreakdown } from "./pricing";
+import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
+import { ledgerSync } from "../shared/ledger.ts";
+import { cacheRatio } from "../shared/pricing.ts";
 import {
   fmtCost,
   fmtCostSmall,
@@ -18,7 +19,7 @@ import {
   tokensLine,
   turnColumns,
   TurnTableHeader,
-} from "./ui.client";
+} from "./ui.tsx";
 
 function useElapsed(startedAt: string | null): string {
   const [now, setNow] = useState(() => Date.now());
@@ -118,9 +119,17 @@ function TurnCell({
 function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginTheme; dense: boolean }) {
   const cols = turnColumns(dense);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null;
-  const split = costBreakdown(record);
+  const split = record.costBreakdown;
   const pct = fmtPct(cacheRatio(record.input, record.cached));
   const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
+  const costDetail =
+    record.costSource === "override"
+      ? "override"
+      : record.costSource === "openrouter"
+        ? "OR ref"
+        : record.costSource === "builtin"
+          ? "list"
+          : fmtResidual(split?.otherUsd ?? null);
   const seqWidth = dense ? 20 : 24;
   return (
     <View
@@ -194,8 +203,8 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
         </Text>
       )}
       <TurnCell
-        top={fmtCost(record.costUsd) ?? "–"}
-        bottom={fmtResidual(split?.otherUsd ?? null)}
+        top={`${record.costSource && record.costSource !== "reported" ? "≈" : ""}${fmtCost(record.effectiveCostUsd) ?? "–"}`}
+        bottom={costDetail}
         width={cols.cost}
         theme={theme}
       />
@@ -279,10 +288,15 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                   // restarts (turnId reuse), which made React render ghost rows.
                   <RecordRow key={record.seq} record={record} theme={theme} dense={dense} />
                 ))}
-                {data.records.some((record) => fmtResidual(costBreakdown(record)?.otherUsd ?? null).trim() !== "") ? (
+                {data.records.some((record) => fmtResidual(record.costBreakdown?.otherUsd ?? null).trim() !== "") ? (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
                     ± under COST: cost not covered by the reported tokens — mostly cache writes, which the provider
                     doesn't report as token counts.
+                  </Text>
+                ) : null}
+                {data.records.some((record) => record.costSource && record.costSource !== "reported") ? (
+                  <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 4 }}>
+                    ≈ estimated: override = local pricing.json · OR ref = OpenRouter reference · list = built-in prices.
                   </Text>
                 ) : null}
               </>

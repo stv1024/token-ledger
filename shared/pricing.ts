@@ -69,6 +69,19 @@ export function costBreakdown(turn: {
   return { inUsd, cacheUsd, outUsd, otherUsd };
 }
 
+/** Computes a breakdown with pricing selected by the server. */
+export function costBreakdownWithPricing(
+  turn: { input: number | null; cached: number | null; output: number | null; costUsd: number | null },
+  pricing: ModelPricing,
+): CostBreakdown | null {
+  if (turn.input === null && turn.cached === null && turn.output === null) return null;
+  const inUsd = ((turn.input ?? 0) * pricing.input) / PER_MTOK;
+  const cacheUsd = ((turn.cached ?? 0) * pricing.cacheRead) / PER_MTOK;
+  const outUsd = ((turn.output ?? 0) * pricing.output) / PER_MTOK;
+  const otherUsd = turn.costUsd !== null ? turn.costUsd - (inUsd + cacheUsd + outUsd) : null;
+  return { inUsd, cacheUsd, outUsd, otherUsd };
+}
+
 /**
  * Share of prompt tokens served from cache: cached / (input + cached).
  * Expects input in canonical fresh-token form (see semantics.ts) — the server

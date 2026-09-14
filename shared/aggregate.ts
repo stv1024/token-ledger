@@ -1,4 +1,4 @@
-import type { TurnRecord } from "./ledger.shared.ts";
+import type { TurnRecord } from "./ledger.ts";
 
 /** Shape of Paseo's AgentUsage protocol field (all members optional upstream). */
 export type UsageLike = {
@@ -87,7 +87,8 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
   let tokens: Observation;
   let source: string;
   let quality: TurnRecord["quality"];
-  if (observations.length >= 2) {
+  const wholeTurnUsage = /claude|anthropic/i.test(args.provider ?? args.model ?? "");
+  if (observations.length >= 2 && !(wholeTurnUsage && final)) {
     tokens = {
       input: sumField(observations, "input"),
       cached: sumField(observations, "cached"),
@@ -110,7 +111,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     quality = "unavailable";
   }
 
-  const rawCost = num(args.finalUsage?.totalCostUsd) ?? final?.cost ?? null;
+  const rawCost = num(args.finalUsage?.totalCostUsd) ?? observations.at(-1)?.cost ?? null;
   let costUsd: number | null = rawCost;
   if (rawCost !== null && args.prevSessionCostUsd !== null && rawCost >= args.prevSessionCostUsd) {
     costUsd = Number((rawCost - args.prevSessionCostUsd).toFixed(6));

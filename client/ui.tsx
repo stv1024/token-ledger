@@ -1,6 +1,6 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Text, View } from "react-native";
-import type { Summary, TurnRecord } from "./ledger.shared";
+import type { Summary, TurnRecord } from "../shared/ledger.ts";
 
 export function fmtTokens(value: number | null): string {
   if (value === null) return "–";
@@ -112,14 +112,16 @@ export function Stat({ label, value, theme, dense }: { label: string; value: str
 }
 
 export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme: PluginTheme; dense?: boolean }) {
-  const cost = fmtCost(summary.costUsd);
+  const cost = fmtCost(summary.effectiveCostUsd);
+  const costValue = cost ? `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}` : null;
+  const costLabel = summary.unpricedTurns > 0 ? `cost · ${summary.unpricedTurns} unknown` : summary.estimatedTurns > 0 ? "cost · estimated" : "cost";
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: dense ? 10 : 16 }}>
       <Stat label="turns" value={String(summary.turns)} theme={theme} dense={dense} />
       <Stat label="input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
       <Stat label="cache" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
       <Stat label="output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
-      {cost ? <Stat label="cost" value={cost} theme={theme} dense={dense} /> : null}
+      {costValue ? <Stat label={costLabel} value={costValue} theme={theme} dense={dense} /> : null}
     </View>
   );
 }

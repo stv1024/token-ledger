@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Paseo 0.8 migration
+
+- Split runtime entries and client/server/shared directories; pin the SDK to 0.8.0 and declare 0.8.x compatibility.
+- Migrate composer pills to native button descriptors and update/remove handles.
+- Start tracking through daemon lifecycle hooks for CLI/headless turns; await timeline subscription readiness and handle history replacement events.
+- Make turn starts idempotent across snapshot/stream ordering, reject stale terminal events, and avoid billing replayed usage on failed/canceled turns. Preserve provider session identity when available for cumulative billing.
+- Traverse agent/workspace catalog pages, serialize ledger appends and retention, and drain pending writes on cleanup.
+- Preserve existing v1 history and the local pricing/estimated-cost work; add regression tests for lifecycle ordering, pagination, persistence, and RPCs.
+
 ## v0.3.1 (2026-09-08)
 
 - Fix: pressing the composer pill (or the command center entry) on compact layouts (phone) did nothing. The v0.3.0 explorer placement assumed the host throws when no explorer pane exists; it doesn't — it silently opens the panel into a side pane the compact UI never renders. Placement is now decided up front from the host's `layout.compact` hint: main pane on compact, explorer side pane otherwise.

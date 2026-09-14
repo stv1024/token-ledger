@@ -1,9 +1,11 @@
-import { useRpc, type PluginSurfaceProps, type PluginTheme } from "@getpaseo/plugin";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { PluginTheme } from "@getpaseo/plugin";
+import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import type { AgentUsageRow, OverviewResult } from "./ledger.shared";
-import { ledgerOverview } from "./ledger.shared";
-import { fmtCost, fmtTime, fmtTokens, SummaryRow } from "./ui.client";
+import type { AgentUsageRow } from "../shared/ledger.ts";
+import { ledgerOverview } from "../shared/ledger.ts";
+import { fmtCost, fmtTime, fmtTokens, SummaryRow } from "./ui.tsx";
 
 const POLL_MS = 3000;
 
@@ -23,7 +25,8 @@ function AgentRow({
   theme: PluginTheme;
   onOpen: (() => void) | null;
 }) {
-  const cost = fmtCost(row.summary.costUsd);
+  const rawCost = fmtCost(row.summary.effectiveCostUsd);
+  const cost = rawCost ? `${row.summary.estimatedTurns > 0 ? "≈" : ""}${rawCost}` : null;
   const totalTokens = row.summary.input + row.summary.cached + row.summary.output;
   const name = row.title ?? row.agentId.slice(0, 8);
   const meta = [row.model ?? row.provider, row.lastActivityAt ? fmtTime(row.lastActivityAt) : null]
@@ -69,31 +72,11 @@ function AgentRow({
 
 export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurfaceProps) {
   const overview = useRpc(ledgerOverview);
-  const [data, setData] = useState<OverviewResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const overviewRef = useRef(overview);
-  overviewRef.current = overview;
-
-  useEffect(() => {
-    let disposed = false;
-    const poll = () => {
-      overviewRef.current({})
-        .then((result) => {
-          if (disposed) return;
-          setData(result);
-          setError(null);
-        })
-        .catch((err) => {
-          if (!disposed) setError(String(err));
-        });
-    };
-    poll();
-    const timer = setInterval(poll, POLL_MS);
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-    };
-  }, []);
+  const { data, error } = useQuery({
+    queryKey: ["token-ledger", "overview"],
+    queryFn: () => overview({}),
+    refetchInterval: POLL_MS,
+  });
 
   const styles = useMemo(
     () => ({
@@ -114,7 +97,7 @@ export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurface
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={{ color: theme.colors.foreground, fontSize: 17, fontWeight: "600" }}>TokenLedger</Text>
-      {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{error}</Text> : null}
+      {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>
           <View style={{ gap: 8 }}>

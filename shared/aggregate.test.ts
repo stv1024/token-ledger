@@ -114,3 +114,20 @@ test("sameTokens compares only token fields", () => {
   );
   assert.ok(!sameTokens({ input: 1, cached: 2, output: 3, cost: null }, { input: 1, cached: 2, output: 4, cost: null }));
 });
+
+test("Claude terminal aggregate takes precedence over multiple observations", () => {
+  const record = finalizeTurn({ ...base,
+    observations: [{ input: 1, cached: 20, output: 3, cost: null }, { input: 2, cached: 30, output: 5, cost: null }],
+    finalUsage: { inputTokens: 2, cachedInputTokens: 30, outputTokens: 5 },
+  });
+  assert.equal(record.input, 2);
+  assert.equal(record.quality, "exact");
+});
+
+test("canceled turn can retain reported cost from its last observation", () => {
+  const record = finalizeTurn({ ...base, status: "canceled", prevSessionCostUsd: 1,
+    observations: [{ input: 1, cached: 20, output: 3, cost: 1.25 }],
+  });
+  assert.equal(record.costUsd, 0.25);
+  assert.equal(record.quality, "partial");
+});
