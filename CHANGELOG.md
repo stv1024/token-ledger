@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Paseo 0.8 migration
+## v0.4.0 (2026-09-14) — Paseo 0.8 migration
 
 - Split runtime entries and client/server/shared directories; pin the SDK to 0.8.0 and declare 0.8.x compatibility.
 - Migrate composer pills to native button descriptors and update/remove handles.
