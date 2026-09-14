@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Paseo 0.8 optimizations
+## v0.5.0 (2026-09-14) — Paseo 0.8 optimizations
 
 - Preserve open turns, provider sessions and billing baselines through plugin reloads with an atomic journal and idempotent append recovery. Reconcile lifecycle hooks with usage-carrying timeline events.
 - Share panel/pill queries, invalidate from agent updates, reduce idle polling, and omit unchanged history from responses. Cache enriched ledger rows and complete paginated agent/workspace catalogs.
