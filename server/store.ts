@@ -2,7 +2,6 @@ import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { TurnRecordSchema, type TurnRecord } from "../shared/ledger.ts";
-import { freshInput, usageSemantics } from "../shared/semantics.ts";
 
 const DATA_DIR = join(process.env.PASEO_HOME ?? join(homedir(), ".paseo"), "plugins", "token-ledger");
 const DATA_FILE = join(DATA_DIR, "ledger.jsonl");
@@ -12,6 +11,7 @@ const TRIM_THRESHOLD = 2200;
 let records: TurnRecord[] = [];
 let loadPromise: Promise<void> | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
+const ids = new Set<string>();
 
 export function dataFilePath(): string {
   return DATA_FILE;
@@ -30,7 +30,9 @@ export function loadStore(): Promise<void> {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        records.push(TurnRecordSchema.parse(JSON.parse(trimmed)));
+        const record = TurnRecordSchema.parse(JSON.parse(trimmed));
+        records.push(record);
+        ids.add(record.id);
       } catch {
         // skip corrupt lines rather than losing the whole ledger
       }
@@ -42,9 +44,11 @@ export function loadStore(): Promise<void> {
 export function appendRecord(record: TurnRecord): Promise<void> {
   const write = writeQueue.then(async () => {
     await loadStore();
+    if (ids.has(record.id)) return;
     await mkdir(DATA_DIR, { recursive: true });
     await appendFile(DATA_FILE, `${JSON.stringify(record)}\n`, "utf8");
     records.push(record);
+    ids.add(record.id);
     if (records.length > TRIM_THRESHOLD) {
       const retained = records.slice(-MAX_RECORDS);
       const tmp = `${DATA_FILE}.tmp`;

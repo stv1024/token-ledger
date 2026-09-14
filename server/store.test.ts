@@ -17,6 +17,7 @@ test('concurrent appends and retention preserve disk/memory order and legacy v1 
       observations: [], finalUsage: {inputTokens: i, cachedInputTokens: 0}, prevSessionCostUsd: null,
     }));
     await Promise.all(records.map(store.appendRecord));
+    await store.appendRecord(records.at(-1)!);
     await store.flushStore();
     const persisted = (await readFile(store.dataFilePath(), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
     assert.equal(persisted.length, 2002);

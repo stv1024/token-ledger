@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { ledgerEnsure, ledgerOverview, ledgerSync } from "./shared/ledger.ts";
-import { ensureTracker, handleEnsure, handleOverview, handleSync, prepareAgent, stopTracker } from "./server/tracker.ts";
+import { ensureTracker, handleEnsure, handleOverview, handleSync, observeStart, observeEnd, prepareAgent, stopTracker } from "./server/tracker.ts";
 
 export default function contribute(server: PluginServerContext) {
   server.handle(ledgerSync, handleSync);
@@ -20,13 +20,15 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   // Covers a plugin reload while an existing provider session stays open.
-  const onStart = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
-    try { await prepareAgent(paseo, agent.id); }
+  const onStart = server.on("agent.turn_started", async (event, { paseo }) => {
+    try { await observeStart(event, paseo); }
     catch (error) { console.error("token-ledger: could not attach turn tracking", error); }
   });
+  const onEnd = server.on("agent.turn_ended", (event, { paseo }) => observeEnd(event, paseo));
   return async () => {
     beforeOpen();
     onStart();
+    onEnd();
     await stopTracker();
   };
 }

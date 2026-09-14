@@ -1,4 +1,6 @@
-import { closeTurn, createState, noteUsage, streamTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
+import { closeTurn, createState, noteUsage, startLifecycleTurn, streamTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
+import { loadJournal, saveJournal } from "./journal.ts";
+import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { listAgents } from "../shared/agents.ts";
 import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from "@getpaseo/client";
 import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
@@ -20,6 +22,37 @@ let unsubscribeAgents: (() => void) | null = null;
 let stopped = false;
 let trackerApi: PaseoApi | null = null;
 let stopPromise: Promise<void> | null = null;
+const pendingRecords = new Map<string, TurnRecord>();
+const recovered = new Set<string>();
+const terminalTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+let persistence: Promise<void> = Promise.resolve();
+
+function checkpoint(): void {
+  if (stopped || checkpointTimer) return;
+  checkpointTimer = setTimeout(() => {
+    checkpointTimer = null;
+    void saveJournal(agents, pendingRecords).catch((error) => console.error("token-ledger: checkpoint failed", error));
+  }, 250);
+}
+async function drainRecords(): Promise<void> {
+  // Write-ahead: a crash between append and checkpoint can safely retry the
+  // same immutable record ID. Failed appends remain pending for the next drain.
+  const batch = [...pendingRecords.values()];
+  await saveJournal(agents, pendingRecords);
+  for (const record of batch) {
+    await appendRecord(record);
+    pendingRecords.delete(record.id);
+  }
+  await saveJournal(agents, pendingRecords);
+}
+function persist(record: TurnRecord | null): void {
+  checkpoint();
+  if (!record) return;
+  pendingRecords.set(record.id, record);
+  persistence = persistence.catch(() => undefined).then(drainRecords);
+  void persistence.catch((error) => console.error("token-ledger: failed to persist turn", error));
+}
 
 function stateFor(agentId: string): AgentState {
   let state = agents.get(agentId);
@@ -29,11 +62,31 @@ function stateFor(agentId: string): AgentState {
   }
   return state;
 }
-function persist(record: TurnRecord | null): void {
-  if (record) void appendRecord(record).catch((error) => console.error("token-ledger: failed to persist turn", error));
-}
 export function observeStream(payload: PaseoAgentTimelineEvent): void {
   if (!stopped) persist(streamTurn(stateFor(payload.agentId), payload));
+}
+export async function observeStart(event: PluginLifecycleEvents["agent.turn_started"], paseo: PaseoApi): Promise<void> {
+  await ensureTracker(paseo);
+  if (stopped) return;
+  const state = stateFor(event.agent.id);
+  state.provider = event.agent.provider;
+  persist(startLifecycleTurn(event.agent.id, state, event.turnId, new Date().toISOString()));
+  await prepareAgent(paseo, event.agent.id);
+}
+export async function observeEnd(event: PluginLifecycleEvents["agent.turn_ended"], paseo: PaseoApi): Promise<void> {
+  await ensureTracker(paseo);
+  if (stopped) return;
+  const state = stateFor(event.agent.id);
+  if (!state.open || state.open.turnId !== event.turnId) return;
+  const key = state.open.key;
+  const endedAt = new Date().toISOString();
+  clearTimeout(terminalTimers.get(key));
+  // The stream carries terminal usage; the hook independently carries outcome.
+  // Give the stream a brief chance to settle, then finalize observed facts only.
+  terminalTimers.set(key, setTimeout(() => {
+    terminalTimers.delete(key);
+    if (!stopped && state.open?.key === key) persist(closeTurn(event.agent.id, state, event.outcome.kind, null, endedAt));
+  }, 250));
 }
 function unwatchAgent(id: string): void {
   subscriptions.get(id)?.();
@@ -46,7 +99,12 @@ function retireAgent(id: string): void {
 }
 function watchAgent(paseo: PaseoApi, agent: AgentSnapshotLike): void {
   if (stopped) return;
-  noteUsage(stateFor(agent.id), agent);
+  if (recovered.delete(agent.id) && !agent.activeTurn && stateFor(agent.id).open) {
+    const record = closeTurn(agent.id, stateFor(agent.id), "canceled", null, new Date().toISOString());
+    if (record) record.source = `recovered_interruption:${record.source}`;
+    persist(record);
+  }
+  persist(noteUsage(stateFor(agent.id), agent));
   if (subscriptions.has(agent.id)) return;
   const subscription = paseo.agents.ref(agent.id).timeline.subscribe(observeStream);
   subscriptions.set(agent.id, subscription);
@@ -68,6 +126,24 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
   trackerApi = paseo;
   startPromise ??= (async () => {
     await loadStore();
+    const journal = await loadJournal();
+    for (const [id, state] of journal.states) {
+      agents.set(id, state);
+      if (state.open) recovered.add(id);
+    }
+    for (const record of journal.pending) pendingRecords.set(record.id, record);
+    // Recover an already-appended turn from a checkpoint taken before closure.
+    const recorded = new Map(allRecords().map((record) => [record.id, record]));
+    for (const state of agents.values()) {
+      const record = state.open ? recorded.get(state.open.key) : undefined;
+      if (record) {
+        state.open = null;
+        state.lastClosedTurnId = record.turnId;
+        state.lastClosedAt = record.endedAt;
+        state.prevSessionCostUsd = record.sessionCostUsd ?? state.prevSessionCostUsd;
+      }
+    }
+    await drainRecords();
     if (stopped) return;
     const changed = new Set<string>();
     let listing = true;
@@ -103,6 +179,10 @@ export function stopTracker(): Promise<void> {
     unsubscribeAgents?.();
     unsubscribeAgents = null;
     for (const id of subscriptions.keys()) unwatchAgent(id);
+    if (checkpointTimer) clearTimeout(checkpointTimer);
+    for (const timer of terminalTimers.values()) clearTimeout(timer);
+    await persistence.catch(() => undefined);
+    await drainRecords();
     await flushStore();
     // 0.8 schedules remote subscription updates from synchronous removers.
     // Round-trip on the same transport before the host closes it, allowing
@@ -145,6 +225,7 @@ export async function handleSync(
 ): Promise<SyncResult> {
   await ensureTracker(context.paseo);
   await ensurePricing();
+  await persistence;
   await flushStore();
   const agentRecords = allRecords().filter((record) => record.agentId === input.agentId);
   const summary = summaryFromRecords(agentRecords);
@@ -192,6 +273,7 @@ function summaryFromRecords(records: readonly TurnRecord[]): Summary {
 export async function handleOverview(_input: object, context: { paseo: PaseoApi }): Promise<OverviewResult> {
   await ensureTracker(context.paseo);
   await ensurePricing();
+  await persistence;
   await flushStore();
   const byAgent = new Map<string, { summary: Summary; lastEndedAt: string | null }>();
   const groupedRecords = new Map<string, TurnRecord[]>();

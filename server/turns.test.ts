@@ -1,7 +1,7 @@
 ﻿import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PaseoAgentStream } from '@getpaseo/client';
-import { createState, noteUsage, streamTurn } from './turns.ts';
+import { AgentStateSchema, createState, noteUsage, startLifecycleTurn, streamTurn } from './turns.ts';
 const start = '2026-09-14T00:00:00.000Z';
 const end = '2026-09-14T00:00:01.000Z';
 const usage = { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 };
@@ -71,4 +71,27 @@ test('idle snapshot supplies billing baseline for plugin reload', () => {
   streamTurn(state, begin());
   const record = streamTurn(state, event({ type: 'turn_completed', provider: 'claude', turnId: 't1', usage: { ...usage, totalCostUsd: 3.5 } }))!;
   assert.equal(record.costUsd, 0.5);
+});
+
+test('snapshot restores session identity and changing it resets cumulative cost', () => {
+  const state = createState();
+  noteUsage(state, { id: 'a', runtimeInfo: { sessionId: 's1' }, lastUsage: { totalCostUsd: 9 } });
+  noteUsage(state, { id: 'a', runtimeInfo: { sessionId: 's2' }, activeTurn: {turnId: 't1', startedAt: start} });
+  assert.equal(state.sessionId, 's2'); assert.equal(state.prevSessionCostUsd, null);
+});
+test('checkpoint round trip preserves observations, record identity and model attribution', () => {
+  const state = createState();
+  noteUsage(state, { id: 'a', provider: 'codex', model: 'original', runtimeInfo: {sessionId: 's'}, activeTurn: {turnId: 't1', startedAt: start}, lastUsage: usage });
+  const key = state.open!.key;
+  const restored = AgentStateSchema.parse(JSON.parse(JSON.stringify(state)));
+  noteUsage(restored, { id: 'a', model: 'new-selection', activeTurn: {turnId: 't1', startedAt: start}, lastUsage: usage });
+  noteUsage(restored, { id: 'a', lastUsage: {...usage, inputTokens: 120} });
+  const record = streamTurn(restored, finish())!;
+  assert.equal(record.id, key); assert.equal(record.model, 'original'); assert.equal(record.modelCalls, 2);
+  assert.equal(record.input, 220);
+});
+test('delayed lifecycle start does not resurrect a settled turn', () => {
+  const state = createState(); streamTurn(state, begin()); streamTurn(state, finish());
+  assert.equal(startLifecycleTurn('a', state, 't1', end), null);
+  assert.equal(state.open, null);
 });
