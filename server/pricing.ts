@@ -9,7 +9,7 @@ import { freshInput, usageSemantics } from "../shared/semantics.ts";
 type PriceTier = ModelPricing & { upToInputTokens?: number };
 type PriceEntry = { providers?: string[]; model: string; tiers: PriceTier[] };
 
-const PriceFileSchema = z.object({
+export const PriceFileSchema = z.object({
   version: z.literal(1),
   currency: z.literal("USD"),
   updatedAt: z.string().optional(),
@@ -24,7 +24,10 @@ const PriceFileSchema = z.object({
           cacheRead: z.number().nonnegative(),
           output: z.number().nonnegative(),
         }),
-      ),
+      ).min(1).refine((tiers) => tiers.every((tier, i) =>
+        i === tiers.length - 1 ? tier.upToInputTokens === undefined :
+          tier.upToInputTokens !== undefined && (i === 0 || tier.upToInputTokens > tiers[i - 1].upToInputTokens!)
+      ), 'Tiers must increase and end with an unbounded tier'),
     }),
   ),
 });
@@ -177,7 +180,11 @@ export function tokenRouterDefaultPricing(model: string, promptTokens: number): 
 }
 
 type OpenRouterPrice = { id: string; prompt: number; completion: number; cacheRead: number };
-type OpenRouterCache = { fetchedAt: string; prices: OpenRouterPrice[] };
+const OpenRouterCacheSchema = z.object({
+  fetchedAt: z.string().datetime(),
+  prices: z.array(z.object({ id: z.string(), prompt: z.number().finite().nonnegative(),
+    completion: z.number().finite().nonnegative(), cacheRead: z.number().finite().nonnegative() })),
+});
 
 let overridePrices: PriceEntry[] = [];
 let openRouterPrices: OpenRouterPrice[] = [];
@@ -202,39 +209,61 @@ async function loadOverrides(): Promise<void> {
   }
 }
 
-async function loadOpenRouter(): Promise<void> {
-  let cached: OpenRouterCache | null = null;
+let refreshPromise: Promise<void> | null = null;
+let nextRefresh = 0;
+let nextOverrideCheck = 0;
+async function loadCachedPrices(): Promise<void> {
   try {
-    cached = JSON.parse(await readFile(OPENROUTER_CACHE_FILE, "utf8")) as OpenRouterCache;
+    const cached = OpenRouterCacheSchema.parse(JSON.parse(await readFile(OPENROUTER_CACHE_FILE, "utf8")));
     openRouterPrices = cached.prices;
+    nextRefresh = Math.min(Date.parse(cached.fetchedAt), Date.now()) + OPENROUTER_MAX_AGE_MS;
   } catch {}
-  if (cached && Date.now() - Date.parse(cached.fetchedAt) < OPENROUTER_MAX_AGE_MS) return;
-  try {
+}
+function refreshPrices(): void {
+  if (refreshPromise || Date.now() < nextRefresh) return;
+  nextRefresh = Date.now() + 5 * 60 * 1000;
+  refreshPromise = (async () => {
     const response = await fetch("https://openrouter.ai/api/v1/models", { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = (await response.json()) as { data?: Array<{ id?: string; pricing?: Record<string, string> }> };
     const prices = (body.data ?? []).flatMap((item): OpenRouterPrice[] => {
       const prompt = Number(item.pricing?.prompt);
       const completion = Number(item.pricing?.completion);
-      if (!item.id || !Number.isFinite(prompt) || !Number.isFinite(completion)) return [];
+      if (!item.id || !Number.isFinite(prompt) || prompt < 0 || !Number.isFinite(completion) || completion < 0) return [];
       const rawCache = Number(item.pricing?.input_cache_read);
       return [{
         id: item.id,
         prompt: prompt * 1_000_000,
         completion: completion * 1_000_000,
-        cacheRead: (Number.isFinite(rawCache) ? rawCache : prompt) * 1_000_000,
+        cacheRead: (Number.isFinite(rawCache) && rawCache >= 0 ? rawCache : prompt) * 1_000_000,
       }];
     });
+    if (!prices.length) throw new Error('Empty pricing response');
+    const cached = OpenRouterCacheSchema.parse({ fetchedAt: new Date().toISOString(), prices });
+    await mkdir(DATA_DIR, { recursive: true });
+    await writeFile(OPENROUTER_CACHE_FILE, `${JSON.stringify(cached)}\n`, "utf8");
     openRouterPrices = prices;
-    await writeFile(OPENROUTER_CACHE_FILE, `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices })}\n`, "utf8");
-  } catch (error) {
+    revision++;
+    nextRefresh = Date.now() + OPENROUTER_MAX_AGE_MS;
+  })().catch((error) => {
     console.error("token-ledger: OpenRouter pricing refresh failed; using cached prices", error);
-  }
+  }).finally(() => { refreshPromise = null; });
 }
 
-export function ensurePricing(): Promise<void> {
-  loadPromise ??= Promise.all([loadOverrides(), loadOpenRouter()]).then(() => { revision++; });
-  return loadPromise;
+/** Local pricing is available immediately; remote freshness never blocks RPC. */
+export async function ensurePricing(): Promise<void> {
+  loadPromise ??= Promise.all([loadOverrides(), loadCachedPrices()]).then(() => {
+    revision++; nextOverrideCheck = Date.now() + 30000;
+  }).catch((error) => { loadPromise = null; throw error; });
+  await loadPromise;
+  if (Date.now() >= nextOverrideCheck) {
+    nextOverrideCheck = Date.now() + 30000;
+    try {
+      const prices = PriceFileSchema.parse(JSON.parse(await readFile(PRICE_FILE, 'utf8'))).prices;
+      if (JSON.stringify(prices) !== JSON.stringify(overridePrices)) { overridePrices = prices; revision++; }
+    } catch (error) { console.error('token-ledger: retaining last valid pricing overrides', error); }
+  }
+  refreshPrices();
 }
 
 function lookupOpenRouter(model: string): ModelPricing | null {
@@ -260,7 +289,20 @@ export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
   const input = freshInput(usageSemantics(record.provider, record.model), record.input, record.cached);
   const promptTokens = (input ?? 0) + (record.cached ?? 0);
   const resolved = resolvePricing(record.provider, record.model, promptTokens);
-  const breakdown = resolved ? costBreakdownWithPricing({ ...record, input }, resolved.pricing) : null;
+  let breakdown = resolved ? costBreakdownWithPricing({ ...record, input }, resolved.pricing) : null;
+  // Price thresholds apply to each prompt, not a multi-call turn's total input.
+  if (record.requests?.length && resolved) {
+    const parts = record.requests.map((request) => {
+      const fresh = freshInput(usageSemantics(record.provider, record.model), request.input, request.cached);
+      const rate = resolvePricing(record.provider, record.model, (fresh ?? 0) + (request.cached ?? 0));
+      return rate ? costBreakdownWithPricing({ ...request, input: fresh, costUsd: null }, rate.pricing) : null;
+    });
+    if (parts.every((part) => part !== null)) {
+      const sum = parts.reduce((total, part) => ({ inUsd: total.inUsd + part!.inUsd,
+        cacheUsd: total.cacheUsd + part!.cacheUsd, outUsd: total.outUsd + part!.outUsd }), { inUsd: 0, cacheUsd: 0, outUsd: 0 });
+      breakdown = { ...sum, otherUsd: record.costUsd === null ? null : record.costUsd - sum.inUsd - sum.cacheUsd - sum.outUsd };
+    }
+  }
   const estimate = breakdown ? breakdown.inUsd + breakdown.cacheUsd + breakdown.outUsd : null;
   return {
     ...record,

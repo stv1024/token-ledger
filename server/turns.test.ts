@@ -67,7 +67,7 @@ test('resuming the same provider session preserves cumulative billing baseline',
   assert.equal(record.sessionId, 'same-session');
 });
 test('idle snapshot supplies billing baseline for plugin reload', () => {
-  const state = createState(); noteUsage(state, { id: 'a', lastUsage: { ...usage, totalCostUsd: 3 } });
+  const state = createState(); noteUsage(state, { id: 'a', provider: 'claude', lastUsage: { ...usage, totalCostUsd: 3 } });
   streamTurn(state, begin());
   const record = streamTurn(state, event({ type: 'turn_completed', provider: 'claude', turnId: 't1', usage: { ...usage, totalCostUsd: 3.5 } }))!;
   assert.equal(record.costUsd, 0.5);

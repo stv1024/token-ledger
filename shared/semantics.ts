@@ -22,6 +22,15 @@ export type UsageSemantics = {
   inputIncludesCached: boolean;
 };
 
+/** Aggregation is a harness contract. A model name cannot establish it. */
+export function providerSemantics(provider: string | null): {
+  tokens: 'turn' | 'request' | 'unknown'; cost: 'session' | 'unknown';
+} {
+  if (/claude|anthropic/i.test(provider ?? '')) return { tokens: 'turn', cost: 'session' };
+  if (/codex/i.test(provider ?? '')) return { tokens: 'request', cost: 'unknown' };
+  return { tokens: 'unknown', cost: 'unknown' };
+}
+
 const SEMANTICS_TABLE: Array<[RegExp, UsageSemantics]> = [
   [/claude|anthropic/i, { inputIncludesCached: false }],
   [/codex|openai|gpt/i, { inputIncludesCached: true }],

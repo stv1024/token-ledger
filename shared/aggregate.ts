@@ -1,3 +1,4 @@
+import { providerSemantics } from "./semantics.ts";
 import type { TurnRecord } from "./ledger.ts";
 
 /** Shape of Paseo's AgentUsage protocol field (all members optional upstream). */
@@ -64,31 +65,17 @@ export type FinalizeInput = {
   prevSessionCostUsd: number | null;
 };
 
-/**
- * Builds the persisted record for a finished turn.
- *
- * Token totals, by provider-observed semantics:
- * - >= 2 observations (Codex-style per-request events): sum them (quality "partial",
- *   the sum is a best-effort turn total).
- * - terminal usage present (Claude reports its own whole-turn aggregate there):
- *   use it as-is (quality "exact").
- * - single observation only: use it (quality "partial").
- * - nothing: quality "unavailable"; never estimate.
- *
- * Cost: providers that report cost may report it cumulatively per session. When the
- * raw value is monotonically non-decreasing vs. the previous turn, the delta is
- * attributed to this turn; otherwise the raw value is used (covers per-turn semantics
- * and session restarts). The raw value is always kept in sessionCostUsd.
- */
+/** Finalize only according to verified harness semantics; preserve raw facts. */
 export function finalizeTurn(args: FinalizeInput): TurnRecord {
-  const { observations } = args;
+  const observations = [...args.observations];
   const final = tokenObservation(args.finalUsage);
+  const semantics = providerSemantics(args.provider);
+  if (semantics.tokens === "request" && final && !observations.some((observation) => sameTokens(observation, final))) observations.push(final);
 
   let tokens: Observation;
   let source: string;
   let quality: TurnRecord["quality"];
-  const wholeTurnUsage = /claude|anthropic/i.test(args.provider ?? args.model ?? "");
-  if (observations.length >= 2 && !(wholeTurnUsage && final)) {
+  if (semantics.tokens === "request" && observations.length > 0) {
     tokens = {
       input: sumField(observations, "input"),
       cached: sumField(observations, "cached"),
@@ -100,9 +87,9 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
   } else if (final) {
     tokens = final;
     source = "turn_usage";
-    quality = "exact";
-  } else if (observations.length === 1) {
-    tokens = observations[0];
+    quality = semantics.tokens === "turn" ? "exact" : "partial";
+  } else if (observations.length > 0) {
+    tokens = observations.at(-1)!;
     source = "last_observation";
     quality = "partial";
   } else {
@@ -112,8 +99,8 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
   }
 
   const rawCost = num(args.finalUsage?.totalCostUsd) ?? observations.at(-1)?.cost ?? null;
-  let costUsd: number | null = rawCost;
-  if (rawCost !== null && args.prevSessionCostUsd !== null && rawCost >= args.prevSessionCostUsd) {
+  let costUsd: number | null = semantics.cost === "session" ? rawCost : null;
+  if (semantics.cost === "session" && rawCost !== null && args.prevSessionCostUsd !== null && rawCost >= args.prevSessionCostUsd) {
     costUsd = Number((rawCost - args.prevSessionCostUsd).toFixed(6));
   }
 
@@ -138,6 +125,8 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     output: tokens.output,
     costUsd,
     sessionCostUsd: rawCost,
+    costScope: semantics.cost,
+    ...(semantics.tokens === "request" ? { requests: observations.map(({ input, cached, output }) => ({ input, cached, output })) } : {}),
     modelCalls: observations.length,
     quality,
     source,

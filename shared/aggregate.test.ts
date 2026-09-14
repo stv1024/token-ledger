@@ -131,3 +131,22 @@ test("canceled turn can retain reported cost from its last observation", () => {
   assert.equal(record.costUsd, 0.25);
   assert.equal(record.quality, "partial");
 });
+
+test('unknown harness never infers aggregation or cumulative cost from a model name', () => {
+  const record = finalizeTurn({ ...base, provider: 'custom', model: 'gpt-6-astra', prevSessionCostUsd: 1,
+    observations: [{ input: 100, cached: 0, output: 10, cost: 1 }, { input: 120, cached: 0, output: 20, cost: 1.5 }],
+    finalUsage: { inputTokens: 120, outputTokens: 20, totalCostUsd: 1.5 },
+  });
+  assert.equal(record.input, 120); assert.equal(record.quality, 'partial');
+  assert.equal(record.costUsd, null); assert.equal(record.sessionCostUsd, 1.5);
+  assert.equal(record.requests, undefined);
+});
+
+test('Codex includes an unseen terminal request and retains raw per-request counts', () => {
+  const record = finalizeTurn({ ...base, provider: 'codex',
+    observations: [{ input: 100, cached: 80, output: 10, cost: null }],
+    finalUsage: { inputTokens: 120, cachedInputTokens: 90, outputTokens: 20 },
+  });
+  assert.equal(record.input, 220); assert.equal(record.requests?.length, 2);
+  assert.equal(record.quality, 'partial');
+});

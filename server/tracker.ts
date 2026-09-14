@@ -4,7 +4,7 @@ import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { listAgents } from "../shared/agents.ts";
 import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from "@getpaseo/client";
 import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
-import { freshInput, usageSemantics } from "../shared/semantics.ts";
+import { freshInput, usageSemantics, providerSemantics } from "../shared/semantics.ts";
 import { ensurePricing } from "./pricing.ts";
 import {
   allRecords,
@@ -210,7 +210,8 @@ function inFlightFor(agentId: string): InFlight | null {
   let input: number | null = null;
   let cached: number | null = null;
   let output: number | null = null;
-  for (const observation of open.observations) {
+  const observations = providerSemantics(open.provider).tokens === "request" ? open.observations : open.observations.slice(-1);
+  for (const observation of observations) {
     const fresh = freshInput(semantics, observation.input, observation.cached);
     if (fresh !== null) input = (input ?? 0) + fresh;
     if (observation.cached !== null) cached = (cached ?? 0) + observation.cached;

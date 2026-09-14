@@ -27,6 +27,12 @@ export const TurnRecordSchema = z.object({
   costUsd: z.number().nullable(),
   /** Raw cost value reported at turn end, before any delta interpretation. */
   sessionCostUsd: z.number().nullable(),
+  /** Explicit cost interpretation; absent on historical records. */
+  costScope: z.enum(['session', 'unknown']).optional(),
+  /** Raw per-request observations, when the harness contract is verified. */
+  requests: z.array(z.object({
+    input: z.number().nullable(), cached: z.number().nullable(), output: z.number().nullable(),
+  })).optional(),
   /** Number of distinct token-bearing usage observations during the turn. */
   modelCalls: z.number(),
   quality: z.enum(["exact", "partial", "unavailable"]),

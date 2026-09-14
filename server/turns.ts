@@ -110,6 +110,7 @@ export function startLifecycleTurn(agentId: string, state: AgentState, turnId: s
 export function streamTurn(state: AgentState, payload: PaseoAgentTimelineEvent): TurnRecord | null {
   const event = payload.event;
   if (event.type === "replacement") return null;
+  if ("provider" in event) state.provider ??= event.provider;
   const at = "timestamp" in payload ? payload.timestamp : new Date().toISOString();
   switch (event.type) {
     case "thread_started": return sessionChanged(payload.agentId, state, event.sessionId);
