@@ -91,7 +91,7 @@ export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurface
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <Text style={{ color: theme.colors.foreground, fontSize: 17, fontWeight: "600" }}>TokenLedger</Text>
+      <Text style={{ color: theme.colors.foreground, fontSize: 17, fontWeight: "600" }}>TokenLedger Overview</Text>
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>

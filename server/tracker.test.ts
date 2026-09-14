@@ -34,10 +34,10 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     subscribe: (fn: typeof update) => { update = fn; catalogSubscriptions++; return () => { removed++; }; },
     list: async (options: {page?: {cursor?: string}}) => {
       listCalls++;
-      return options.page?.cursor ? { entries: [{agent: {...snapshot, id: "page-two", status: "closed"}}], pageInfo: {nextCursor: null} }
+      return options.page?.cursor ? { entries: [{agent: {...snapshot, id: "page-two", workspaceId: "w2", updatedAt: "2026-09-15T00:00:00Z", status: "closed"}}], pageInfo: {nextCursor: null} }
         : { entries: [{agent: snapshot}], pageInfo: {nextCursor: "next"} };
     }, ref: () => handle,
-  }, workspaces: { subscribe: () => () => { removed++; }, list: async () => ({ entries: [{id: 'w', title: 'Workspace', name: 'workspace'}], pageInfo: {nextCursor: null} }) } } as unknown as PaseoApi;
+  }, workspaces: { subscribe: () => () => { removed++; }, list: async () => ({ entries: [{id: 'w', title: 'Workspace', name: 'workspace'}, {id: 'w2', title: 'Older Workspace', name: 'older-workspace'}], pageInfo: {nextCursor: null} }) } } as unknown as PaseoApi;
   const tracker = await import('./tracker.ts');
   const store = await import('./store.ts');
   try {
@@ -57,8 +57,10 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     assert.deepEqual(unchanged.summary, result.summary);
     const beforeOverview = listCalls;
     const overview = ledgerOverview.output.parse(await tracker.handleOverview({}, {paseo}));
-    assert.equal(overview.totals.turns, 1); assert.equal(overview.groups[0].workspaceName, 'Workspace');
-    assert.equal(overview.groups[0].agents.length, 2);
+    assert.equal(overview.totals.turns, 1);
+    assert.equal(overview.groups[0].workspaceName, 'Older Workspace', 'workspaces follow their most recent session, not their names');
+    assert.equal(overview.groups[0].agents[0].agentId, 'page-two');
+    assert.equal(overview.groups[1].workspaceName, 'Workspace');
     await tracker.handleOverview({}, {paseo});
     assert.equal(listCalls, beforeOverview);
     await tracker.stopTracker(); assert.equal(removed, 3);

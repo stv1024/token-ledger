@@ -311,16 +311,25 @@ export async function handleOverview(_input: object, context: { paseo: PaseoApi 
   if (totals.costUsd !== null) totals.costUsd = Number(totals.costUsd.toFixed(6));
   if (totals.effectiveCostUsd !== null) totals.effectiveCostUsd = Number(totals.effectiveCostUsd.toFixed(6));
 
+  const byLatestActivity = (a: AgentUsageRow, b: AgentUsageRow) =>
+    (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? "");
   const groups = [...rows.entries()]
     .map(([workspaceId, groupAgents]) => ({
       workspaceId,
       workspaceName: workspaceId ? (workspaceNames.get(workspaceId) ?? null) : null,
-      agents: groupAgents.sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? "")),
+      // The overview is a monitoring entry point: live sessions always lead,
+      // followed by the most recently active history within the workspace.
+      agents: groupAgents.sort((a, b) => Number(b.active) - Number(a.active) || byLatestActivity(a, b)),
     }))
     .sort((a, b) => {
-      if (a.workspaceId === null) return 1;
-      if (b.workspaceId === null) return -1;
-      return (a.workspaceName ?? a.workspaceId).localeCompare(b.workspaceName ?? b.workspaceId);
+      const aActive = a.agents.some((agent) => agent.active);
+      const bActive = b.agents.some((agent) => agent.active);
+      if (aActive !== bActive) return Number(bActive) - Number(aActive);
+      // "Other sessions" participates by activity just like named workspaces.
+      // A deterministic name/id fallback prevents equal timestamps from jumping.
+      return byLatestActivity(a.agents[0]!, b.agents[0]!)
+        || (a.workspaceName ?? a.workspaceId ?? "Other sessions")
+          .localeCompare(b.workspaceName ?? b.workspaceId ?? "Other sessions");
     });
 
   return { groups, totals };

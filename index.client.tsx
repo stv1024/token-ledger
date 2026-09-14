@@ -12,7 +12,7 @@ export default function contribute(client: PluginClientContext) {
   client.addTimelineRenderer({ kind: USAGE_TIMELINE_KIND, version: 1, schema: UsageTimelineSchema, Component: UsageTimelineRow });
   client.addWorkspacePanel({
     id: "ledger",
-    title: "TokenLedger",
+    title: "TokenLedger Session Ledger",
     icon: "Coins",
     context: "agent",
     locations: ["workspace", "explorer"],
@@ -21,13 +21,13 @@ export default function contribute(client: PluginClientContext) {
   client.addSurface("ledger-overview", TokenLedgerOverview);
   client.addSidebarItem({
     id: "ledger-overview",
-    title: "TokenLedger",
+    title: "TokenLedger Overview",
     icon: "Coins",
     surface: "ledger-overview",
   });
   client.addCommandCenterItem({
     id: "open-ledger",
-    title: "Open TokenLedger",
+    title: "Open TokenLedger Session Ledger",
     icon: "Coins",
     keywords: ["token", "usage", "cost", "ledger"],
     context: "agent",
