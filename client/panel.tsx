@@ -1,10 +1,9 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useAgent, useRpc, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
-import { useQuery } from "@tanstack/react-query";
+import { useAgent, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
+import { useLedger } from "./data.ts";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
-import { ledgerSync } from "../shared/ledger.ts";
 import { cacheRatio } from "../shared/pricing.ts";
 import {
   fmtCost,
@@ -223,15 +222,10 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
 const DENSE_MAX_WIDTH = 410;
 
 export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
-  const sync = useRpc(ledgerSync);
   // 0 until the first onLayout; fall back to the host's compact hint then.
   const [panelWidth, setPanelWidth] = useState(0);
   const dense = panelWidth > 0 ? panelWidth < DENSE_MAX_WIDTH : layout.compact;
-  const { data, error } = useQuery({
-    queryKey: ["token-ledger", agentId],
-    queryFn: () => sync({ agentId }),
-    refetchInterval: 2000,
-  });
+  const { data, error } = useLedger(agentId);
   // Make the panel↔agent binding visible: which session is this ledger for?
   const agentLabel = useAgent(agentId, (agent) => {
     const name = agent.title ?? agentId.slice(0, 8);

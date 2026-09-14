@@ -1,11 +1,10 @@
 ﻿import type { PaseoAgent } from "@getpaseo/client";
 import type { PluginButtonIconProps, PluginButtonRegistration, PluginClientContext } from "@getpaseo/plugin/client";
-import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useLedger } from "./data.ts";
 import { useEffect } from "react";
 import { listAgents } from "../shared/agents.ts";
-import { ledgerEnsure, ledgerSync, type SyncResult } from "../shared/ledger.ts";
+import { ledgerEnsure, type SyncResult } from "../shared/ledger.ts";
 import { fmtCost, fmtTokens } from "./ui.tsx";
 
 // Default to the visible main pane until a rendered icon supplies the layout.
@@ -43,12 +42,7 @@ export function contributePills(client: PluginClientContext): () => void {
     function UsageIcon(props: PluginButtonIconProps) {
       compact = props.layout.compact;
       hostLayoutCompact = compact;
-      const sync = useRpc(ledgerSync);
-      const { data, error } = useQuery({
-        queryKey: ["token-ledger", "pill", agent.id],
-        queryFn: () => sync({ agentId: agent.id, limit: 1 }),
-        refetchInterval: 3000,
-      });
+      const { data, error } = useLedger(agent.id);
       useEffect(() => {
         handle.update({ label: error ? "Usage unavailable" : data ? pillLabel(data) : "…" });
       }, [data, error]);

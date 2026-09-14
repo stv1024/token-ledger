@@ -5,15 +5,18 @@ import { listAgents } from "../shared/agents.ts";
 import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from "@getpaseo/client";
 import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
 import { freshInput, usageSemantics } from "../shared/semantics.ts";
-import { enrichTurn, ensurePricing } from "./pricing.ts";
+import { ensurePricing } from "./pricing.ts";
 import {
   allRecords,
   flushStore,
   appendRecord,
   lastRecordForAgent,
   loadStore,
-  recordsForAgent,
 } from "./store.ts";
+
+import { readModel, EMPTY_SUMMARY } from "./read-model.ts";
+import { Catalog } from "./catalog.ts";
+const catalog = new Catalog();
 
 const agents = new Map<string, AgentState>();
 const subscriptions = new Map<string, PaseoAgentTimelineSubscription>();
@@ -24,7 +27,7 @@ let trackerApi: PaseoApi | null = null;
 let stopPromise: Promise<void> | null = null;
 const pendingRecords = new Map<string, TurnRecord>();
 const recovered = new Set<string>();
-const terminalTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const terminalTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; settle: () => void }>();
 let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
 let persistence: Promise<void> = Promise.resolve();
 
@@ -80,13 +83,14 @@ export async function observeEnd(event: PluginLifecycleEvents["agent.turn_ended"
   if (!state.open || state.open.turnId !== event.turnId) return;
   const key = state.open.key;
   const endedAt = new Date().toISOString();
-  clearTimeout(terminalTimers.get(key));
+  clearTimeout(terminalTimers.get(key)?.timer);
   // The stream carries terminal usage; the hook independently carries outcome.
   // Give the stream a brief chance to settle, then finalize observed facts only.
-  terminalTimers.set(key, setTimeout(() => {
+  const settle = () => {
     terminalTimers.delete(key);
-    if (!stopped && state.open?.key === key) persist(closeTurn(event.agent.id, state, event.outcome.kind, null, endedAt));
-  }, 250));
+    if (state.open?.key === key) persist(closeTurn(event.agent.id, state, event.outcome.kind, null, endedAt));
+  };
+  terminalTimers.set(key, { timer: setTimeout(settle, 250), settle });
 }
 function unwatchAgent(id: string): void {
   subscriptions.get(id)?.();
@@ -149,17 +153,22 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
     let listing = true;
     unsubscribeAgents = paseo.agents.subscribe((update) => {
       if (update.kind === "upsert") {
+        catalog.note(update.agent);
         if (listing) changed.add(update.agent.id);
         if (update.agent.archivedAt || update.agent.status === "closed") retireAgent(update.agent.id);
         else watchAgent(paseo, update.agent);
       } else {
         if (listing) changed.add(update.agentId);
+        catalog.remove(update.agentId);
         retireAgent(update.agentId);
       }
     });
     try {
       const initial = await listAgents(paseo, true);
-      for (const agent of initial) if (!changed.has(agent.id) && !agent.archivedAt && agent.status !== "closed") watchAgent(paseo, agent);
+      for (const agent of initial) if (!changed.has(agent.id)) {
+        catalog.note(agent);
+        if (!agent.archivedAt && agent.status !== "closed") watchAgent(paseo, agent);
+      }
       listing = false;
       changed.clear();
       await Promise.all([...subscriptions.values()].map((subscription) => subscription.ready));
@@ -178,9 +187,10 @@ export function stopTracker(): Promise<void> {
   stopPromise ??= (async () => {
     unsubscribeAgents?.();
     unsubscribeAgents = null;
+    catalog.dispose();
     for (const id of subscriptions.keys()) unwatchAgent(id);
     if (checkpointTimer) clearTimeout(checkpointTimer);
-    for (const timer of terminalTimers.values()) clearTimeout(timer);
+    for (const pending of [...terminalTimers.values()]) { clearTimeout(pending.timer); pending.settle(); }
     await persistence.catch(() => undefined);
     await drainRecords();
     await flushStore();
@@ -196,7 +206,7 @@ function inFlightFor(agentId: string): InFlight | null {
   const state = agents.get(agentId);
   const open = state?.open;
   if (!open) return null;
-  const semantics = usageSemantics(state?.provider ?? null, state?.model ?? null);
+  const semantics = usageSemantics(open.provider, open.model);
   let input: number | null = null;
   let cached: number | null = null;
   let output: number | null = null;
@@ -220,54 +230,24 @@ function inFlightFor(agentId: string): InFlight | null {
 }
 
 export async function handleSync(
-  input: { agentId: string; limit?: number },
+  input: { agentId: string; limit?: number; knownRecordsRevision?: string },
   context: { paseo: PaseoApi },
 ): Promise<SyncResult> {
   await ensureTracker(context.paseo);
   await ensurePricing();
   await persistence;
   await flushStore();
-  const agentRecords = allRecords().filter((record) => record.agentId === input.agentId);
-  const summary = summaryFromRecords(agentRecords);
+  const model = readModel();
+  const group = model.groups.get(input.agentId);
+  const summary = group?.summary ?? { ...EMPTY_SUMMARY };
+  const recordsRevision = `${model.revision}:${input.agentId}:${input.limit ?? 50}`;
   return {
     inFlight: inFlightFor(input.agentId),
-    // recordsForAgent is newest-first, so the newest row gets seq = summary.turns.
-    records: recordsForAgent(input.agentId, input.limit ?? 50).map((record, i) => enrichTurn(record, summary.turns - i)),
+    recordsRevision,
+    records: input.knownRecordsRevision === recordsRevision ? [] : (group?.rows.slice(0, input.limit ?? 50) ?? []),
     summary,
     ctx: agents.get(input.agentId)?.lastCtx ?? null,
   };
-}
-
-const EMPTY_SUMMARY: Summary = {
-  turns: 0,
-  input: 0,
-  cached: 0,
-  output: 0,
-  costUsd: null,
-  effectiveCostUsd: null,
-  estimatedTurns: 0,
-  unpricedTurns: 0,
-};
-
-function summaryFromRecords(records: readonly TurnRecord[]): Summary {
-  const summary: Summary = { ...EMPTY_SUMMARY };
-  for (const record of records) {
-    const row = enrichTurn(record, 1);
-    summary.turns += 1;
-    summary.input += row.input ?? 0;
-    summary.cached += row.cached ?? 0;
-    summary.output += row.output ?? 0;
-    if (record.costUsd !== null) summary.costUsd = (summary.costUsd ?? 0) + record.costUsd;
-    if (row.effectiveCostUsd !== null) {
-      summary.effectiveCostUsd = (summary.effectiveCostUsd ?? 0) + row.effectiveCostUsd;
-      if (row.costSource !== "reported") summary.estimatedTurns += 1;
-    } else {
-      summary.unpricedTurns += 1;
-    }
-  }
-  if (summary.costUsd !== null) summary.costUsd = Number(summary.costUsd.toFixed(6));
-  if (summary.effectiveCostUsd !== null) summary.effectiveCostUsd = Number(summary.effectiveCostUsd.toFixed(6));
-  return summary;
 }
 
 export async function handleOverview(_input: object, context: { paseo: PaseoApi }): Promise<OverviewResult> {
@@ -275,49 +255,10 @@ export async function handleOverview(_input: object, context: { paseo: PaseoApi 
   await ensurePricing();
   await persistence;
   await flushStore();
-  const byAgent = new Map<string, { summary: Summary; lastEndedAt: string | null }>();
-  const groupedRecords = new Map<string, TurnRecord[]>();
-  for (const record of allRecords()) {
-    const group = groupedRecords.get(record.agentId);
-    if (group) group.push(record);
-    else groupedRecords.set(record.agentId, [record]);
-  }
-  for (const [agentId, records] of groupedRecords) {
-    byAgent.set(agentId, { summary: summaryFromRecords(records), lastEndedAt: records.at(-1)?.endedAt ?? null });
-  }
-
-  const snapshots = new Map<string, { workspaceId: string | null; title: string | null; provider: string; model: string | null; status: string; updatedAt: string }>();
-  try {
-    const page = await context.paseo.agents.list({ page: { limit: 200 } });
-    for (const entry of page.entries) {
-      const agent = entry.agent;
-      snapshots.set(agent.id, {
-        workspaceId: agent.workspaceId ?? null,
-        title: agent.title,
-        provider: agent.provider,
-        model: agent.model,
-        status: agent.status,
-        updatedAt: agent.updatedAt,
-      });
-    }
-  } catch (error) {
-    console.error("token-ledger: failed to list agents for overview", error);
-  }
-
-  const workspaceNames = new Map<string, string>();
-  try {
-    let cursor: string | undefined;
-    const seen = new Set<string>();
-    do {
-      const page = await context.paseo.workspaces.list({ page: { limit: 200, ...(cursor ? { cursor } : {}) } });
-      for (const workspace of page.entries) workspaceNames.set(workspace.id, workspace.title ?? workspace.name);
-      cursor = page.pageInfo.nextCursor ?? undefined;
-      if (cursor && seen.has(cursor)) throw new Error("Repeated workspace pagination cursor");
-      if (cursor) seen.add(cursor);
-    } while (cursor);
-  } catch (error) {
-    console.error("token-ledger: failed to list workspaces for overview", error);
-  }
+  const byAgent = readModel().groups;
+  await catalog.ensureWorkspaces(context.paseo);
+  const snapshots = catalog.agents;
+  const workspaceNames = catalog.workspaceNames;
 
   // Every agent with recorded usage, plus live agents the daemon knows about.
   const agentIds = new Set<string>([...byAgent.keys(), ...snapshots.keys()]);

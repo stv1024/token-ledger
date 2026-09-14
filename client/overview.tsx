@@ -1,13 +1,11 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useOverview } from "./data.ts";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { AgentUsageRow } from "../shared/ledger.ts";
-import { ledgerOverview } from "../shared/ledger.ts";
 import { fmtCost, fmtTime, fmtTokens, SummaryRow } from "./ui.tsx";
 
-const POLL_MS = 3000;
 
 function agentStatusColor(row: AgentUsageRow, theme: PluginTheme): string {
   if (row.active) return theme.colors.accent;
@@ -71,12 +69,7 @@ function AgentRow({
 }
 
 export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurfaceProps) {
-  const overview = useRpc(ledgerOverview);
-  const { data, error } = useQuery({
-    queryKey: ["token-ledger", "overview"],
-    queryFn: () => overview({}),
-    refetchInterval: POLL_MS,
-  });
+  const { data, error } = useOverview();
 
   const styles = useMemo(
     () => ({

@@ -182,6 +182,8 @@ type OpenRouterCache = { fetchedAt: string; prices: OpenRouterPrice[] };
 let overridePrices: PriceEntry[] = [];
 let openRouterPrices: OpenRouterPrice[] = [];
 let loadPromise: Promise<void> | null = null;
+let revision = 0;
+export const pricingRevision = () => revision;
 
 async function loadOverrides(): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true });
@@ -231,7 +233,7 @@ async function loadOpenRouter(): Promise<void> {
 }
 
 export function ensurePricing(): Promise<void> {
-  loadPromise ??= Promise.all([loadOverrides(), loadOpenRouter()]).then(() => undefined);
+  loadPromise ??= Promise.all([loadOverrides(), loadOpenRouter()]).then(() => { revision++; });
   return loadPromise;
 }
 

@@ -18,14 +18,19 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
   let timeline: (event: PaseoAgentTimelineEvent) => void = () => {};
   let removed = 0;
   let catalogSubscriptions = 0;
+  let listCalls = 0;
   const snapshot = { id: 'a', provider: 'codex', model: 'gpt-5', workspaceId: 'w', title: 'Test',
     status: 'idle', updatedAt: '2026-09-14T00:00:00Z', lastUsage: undefined };
   const handle = { refresh: async () => snapshot, current: () => snapshot,
     timeline: { subscribe: (fn: typeof timeline) => { timeline = fn; return Object.assign(() => { removed++; }, { ready: Promise.resolve() }); } } };
   const paseo = { agents: {
     subscribe: (fn: typeof update) => { update = fn; catalogSubscriptions++; return () => { removed++; }; },
-    list: async () => ({ entries: [{agent: snapshot}], pageInfo: {nextCursor: null} }), ref: () => handle,
-  }, workspaces: { list: async () => ({ entries: [{id: 'w', title: 'Workspace', name: 'workspace'}], pageInfo: {nextCursor: null} }) } } as unknown as PaseoApi;
+    list: async (options: {page?: {cursor?: string}}) => {
+      listCalls++;
+      return options.page?.cursor ? { entries: [{agent: {...snapshot, id: "page-two", status: "closed"}}], pageInfo: {nextCursor: null} }
+        : { entries: [{agent: snapshot}], pageInfo: {nextCursor: "next"} };
+    }, ref: () => handle,
+  }, workspaces: { subscribe: () => () => { removed++; }, list: async () => ({ entries: [{id: 'w', title: 'Workspace', name: 'workspace'}], pageInfo: {nextCursor: null} }) } } as unknown as PaseoApi;
   const tracker = await import('./tracker.ts');
   const store = await import('./store.ts');
   try {
@@ -40,9 +45,16 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     const result = ledgerSync.output.parse(await tracker.handleSync({agentId: 'a'}, {paseo}));
     assert.equal(result.summary.turns, 1); assert.equal(result.records[0].input, 20);
     assert.equal(result.records[0].quality, 'partial'); assert.equal(store.allRecords()[0].input, 100);
+    const unchanged = await tracker.handleSync({agentId: "a", knownRecordsRevision: result.recordsRevision}, {paseo});
+    assert.deepEqual(unchanged.records, []);
+    assert.deepEqual(unchanged.summary, result.summary);
+    const beforeOverview = listCalls;
     const overview = ledgerOverview.output.parse(await tracker.handleOverview({}, {paseo}));
     assert.equal(overview.totals.turns, 1); assert.equal(overview.groups[0].workspaceName, 'Workspace');
-    await tracker.stopTracker(); assert.equal(removed, 2);
+    assert.equal(overview.groups[0].agents.length, 2);
+    await tracker.handleOverview({}, {paseo});
+    assert.equal(listCalls, beforeOverview);
+    await tracker.stopTracker(); assert.equal(removed, 3);
     timeline({ agentId: 'a', timestamp: '2026-09-14T00:00:02Z', event: {type: 'turn_started', provider: 'codex', turnId: 't2'} });
     assert.equal(store.allRecords().length, 1);
   } finally {

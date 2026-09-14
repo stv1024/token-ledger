@@ -86,6 +86,7 @@ export const CtxSchema = z.object({
 export type Ctx = z.infer<typeof CtxSchema>;
 
 const SyncOutputSchema = z.object({
+  recordsRevision: z.string(),
   inFlight: InFlightSchema.nullable(),
   records: z.array(TurnRowSchema),
   summary: SummarySchema,
@@ -98,6 +99,7 @@ export const ledgerSync = defineRpc({
   name: "ledger.sync",
   input: z.object({
     agentId: z.string(),
+    knownRecordsRevision: z.string().optional(),
     limit: z.number().int().positive().max(200).optional(),
   }),
   output: SyncOutputSchema,

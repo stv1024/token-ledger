@@ -12,6 +12,9 @@ let records: TurnRecord[] = [];
 let loadPromise: Promise<void> | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
 const ids = new Set<string>();
+const bootId = crypto.randomUUID();
+let revision = 0;
+export const storeRevision = () => `${bootId}:${revision}`;
 
 export function dataFilePath(): string {
   return DATA_FILE;
@@ -49,6 +52,7 @@ export function appendRecord(record: TurnRecord): Promise<void> {
     await appendFile(DATA_FILE, `${JSON.stringify(record)}\n`, "utf8");
     records.push(record);
     ids.add(record.id);
+    revision++;
     if (records.length > TRIM_THRESHOLD) {
       const retained = records.slice(-MAX_RECORDS);
       const tmp = `${DATA_FILE}.tmp`;
