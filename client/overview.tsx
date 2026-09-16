@@ -1,9 +1,10 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useMemo } from "react";
 import { useOverview } from "./data.ts";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { AgentUsageRow } from "../shared/ledger.ts";
 import { fmtCost, fmtTime, fmtTokens, SummaryRow } from "./ui.tsx";
 

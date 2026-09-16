@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.1 (2026-09-16) — iOS plugin loading fix
+
+- Fix iOS plugin activation: replace the client-side `PanelPlacement` class with a closure factory so the dynamically loaded bundle avoids Hermes-incompatible class syntax.
+- Use Paseo's plugin-hosted `ScrollView` in the panel and overview for compatible scrolling within mobile sheets.
+
 ## v0.5.0 (2026-09-14) — Paseo 0.8 optimizations
 
 - Preserve open turns, provider sessions and billing baselines through plugin reloads with an atomic journal and idempotent append recovery. Reconcile lifecycle hooks with usage-carrying timeline events.

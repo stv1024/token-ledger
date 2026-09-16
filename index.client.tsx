@@ -3,12 +3,12 @@ import { TokenLedgerOverview } from "./client/overview.tsx";
 import { TokenLedgerPanel } from "./client/panel.tsx";
 import { contributePills } from "./client/pill.tsx";
 
-import { PanelPlacement } from "./client/layout.ts";
+import { createPanelPlacement } from "./client/layout.ts";
 import { UsageTimelineRow } from "./client/timeline.tsx";
 import { UsageTimelineSchema, USAGE_TIMELINE_KIND } from "./shared/timeline.ts";
 
 export default function contribute(client: PluginClientContext) {
-  const placement = new PanelPlacement();
+  const placement = createPanelPlacement();
   client.addTimelineRenderer({ kind: USAGE_TIMELINE_KIND, version: 1, schema: UsageTimelineSchema, Component: UsageTimelineRow });
   client.addWorkspacePanel({
     id: "ledger",

@@ -1,9 +1,10 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
+import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useLedger } from "./data.ts";
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
 import { cacheRatio } from "../shared/pricing.ts";
 import {

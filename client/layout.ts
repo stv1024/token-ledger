@@ -7,16 +7,25 @@ export function useDenseLayout(compact: boolean) {
 }
 
 /** Scoped to one client contribution, using only currently mounted icons. */
-export class PanelPlacement {
-  private layouts = new Map<string, Map<symbol, boolean>>();
-  observe(agentId: string, compact: boolean): () => void {
-    const token = Symbol();
-    const entries = this.layouts.get(agentId) ?? new Map<symbol, boolean>();
-    entries.set(token, compact); this.layouts.set(agentId, entries);
-    return () => { entries.delete(token); if (!entries.size) this.layouts.delete(agentId); };
-  }
-  options(agentId: string): { location?: 'explorer' } {
-    const entries = this.layouts.get(agentId);
-    return entries?.size && [...entries.values()].every((compact) => !compact) ? { location: 'explorer' } : {};
-  }
+export function createPanelPlacement() {
+  const layouts = new Map<string, Map<symbol, boolean>>();
+
+  return {
+    observe(agentId: string, compact: boolean): () => void {
+      const token = Symbol();
+      const entries = layouts.get(agentId) ?? new Map<symbol, boolean>();
+      entries.set(token, compact);
+      layouts.set(agentId, entries);
+      return () => {
+        entries.delete(token);
+        if (!entries.size) layouts.delete(agentId);
+      };
+    },
+    options(agentId: string): { location?: 'explorer' } {
+      const entries = layouts.get(agentId);
+      return entries?.size && [...entries.values()].every((compact) => !compact) ? { location: 'explorer' } : {};
+    },
+  };
 }
+
+export type PanelPlacement = ReturnType<typeof createPanelPlacement>;
