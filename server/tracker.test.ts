@@ -12,7 +12,9 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
   process.env.PASEO_HOME = home;
   const dir = join(home, 'plugins', 'token-ledger');
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'pricing.json'), JSON.stringify({version: 1, currency: 'USD', prices: []}));
+  await writeFile(join(dir, 'pricing.json'), JSON.stringify({version: 1, currency: 'USD', prices: [{
+    providers: ['codex'], model: 'gpt-5', tiers: [{input: 10, cacheRead: 1, output: 20}],
+  }]}));
   await writeFile(join(dir, 'openrouter-pricing.json'), JSON.stringify({fetchedAt: new Date().toISOString(), prices: []}));
   let update: (event: PaseoAgentUpdate) => void = () => {};
   let timeline: (event: PaseoAgentTimelineEvent) => void = () => {};
@@ -48,6 +50,8 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
       lastUsage: {inputTokens: 100, cachedInputTokens: 80, outputTokens: 5}}} as PaseoAgentUpdate);
     const live = await tracker.handleSync({agentId: 'a'}, {paseo});
     assert.equal(live.inFlight?.input, 20);
+    assert.equal(live.inFlight?.effectiveCostUsd, 0.00038);
+    assert.equal(live.inFlight?.costSource, 'override');
     timeline({ agentId: 'a', timestamp: '2026-09-14T00:00:01Z', event: {type: 'turn_completed', provider: 'codex', turnId: 't1'} });
     const result = ledgerSync.output.parse(await tracker.handleSync({agentId: 'a'}, {paseo}));
     assert.equal(result.summary.turns, 1); assert.equal(result.records[0].input, 20);

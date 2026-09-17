@@ -5,7 +5,7 @@ import { listAgents } from "../shared/agents.ts";
 import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from "@getpaseo/client";
 import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
 import { freshInput, usageSemantics, providerSemantics } from "../shared/semantics.ts";
-import { ensurePricing } from "./pricing.ts";
+import { ensurePricing, estimateUsageCost } from "./pricing.ts";
 import {
   allRecords,
   flushStore,
@@ -232,6 +232,16 @@ function inFlightFor(agentId: string): InFlight | null {
     if (observation.output !== null) output = (output ?? 0) + observation.output;
   }
   const usage = open.lastUsage;
+  const estimated = estimateUsageCost({
+    provider: open.provider,
+    model: open.model,
+    input,
+    cached,
+    output,
+    ...(providerSemantics(open.provider).tokens === "request"
+      ? { requests: open.observations.map(({ input, cached, output }) => ({ input, cached, output })) }
+      : {}),
+  });
   return {
     turnId: open.turnId,
     startedAt: open.startedAt,
@@ -239,6 +249,8 @@ function inFlightFor(agentId: string): InFlight | null {
     input,
     cached,
     output,
+    effectiveCostUsd: estimated.effectiveCostUsd,
+    costSource: estimated.costSource,
     ctxUsed: typeof usage?.contextWindowUsedTokens === "number" ? usage.contextWindowUsedTokens : null,
     ctxMax: typeof usage?.contextWindowMaxTokens === "number" ? usage.contextWindowMaxTokens : null,
   };

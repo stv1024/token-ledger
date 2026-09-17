@@ -90,6 +90,11 @@ function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: numbe
           tokens & cost reported at turn end
         </Text>
       )}
+      {inFlight.effectiveCostUsd !== null ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
+          ≈{fmtCost(inFlight.effectiveCostUsd)} current turn
+        </Text>
+      ) : null}
       {ctx ? <CtxBar ctx={ctx} theme={theme} /> : null}
     </View>
   );

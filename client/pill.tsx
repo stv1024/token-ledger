@@ -10,9 +10,13 @@ import { fmtCost, fmtTokens } from "./ui.tsx";
 import type { PanelPlacement } from "./layout.ts";
 
 function pillLabel({ summary, inFlight, ctx }: SyncResult): string {
-  const cost = fmtCost(summary.effectiveCostUsd);
+  const combinedCost = summary.effectiveCostUsd === null && inFlight?.effectiveCostUsd == null
+    ? null
+    : (summary.effectiveCostUsd ?? 0) + (inFlight?.effectiveCostUsd ?? 0);
+  const cost = fmtCost(combinedCost);
+  const estimated = summary.estimatedTurns > 0 || inFlight?.effectiveCostUsd != null;
   const parts = [cost
-    ? `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}`
+    ? `${estimated ? "≈" : ""}${cost}`
     : `${fmtTokens(summary.input + summary.cached + summary.output)} tok`];
   const liveCtx = inFlight?.ctxUsed != null && inFlight.ctxMax != null
     ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : ctx;

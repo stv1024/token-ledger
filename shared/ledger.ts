@@ -67,6 +67,9 @@ export const InFlightSchema = z.object({
   input: z.number().nullable(),
   cached: z.number().nullable(),
   output: z.number().nullable(),
+  /** Current turn estimate from the same server-side pricing path as settled rows. */
+  effectiveCostUsd: z.number().nullable(),
+  costSource: CostSourceSchema.nullable(),
   ctxUsed: z.number().nullable(),
   ctxMax: z.number().nullable(),
 });

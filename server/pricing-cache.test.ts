@@ -30,6 +30,7 @@ test('pricing serves local rates during network refresh, prices each request, an
     });
     assert.equal(pricing.enrichTurn(record, 1).effectiveCostUsd, 0.00017);
     assert.equal(pricing.enrichTurn({ ...record, requests: undefined }, 1).effectiveCostUsd, 0.0017);
+    assert.equal(pricing.estimateUsageCost(record).effectiveCostUsd, 0.00017);
     assert.equal(pricing.PriceFileSchema.safeParse({ ...prices, prices: [{ model: 'bad', tiers: [] }] }).success, false);
     const before = pricing.pricingRevision();
     resolveFetch(new Response(JSON.stringify({ data: [{ id: 'remote', pricing: { prompt: '0.001', completion: '0.002' } }] })));

@@ -285,31 +285,53 @@ function resolvePricing(provider: string | null, model: string | null, promptTok
   return builtin ? { pricing: builtin, source: "builtin" } : null;
 }
 
-export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
-  const input = freshInput(usageSemantics(record.provider, record.model), record.input, record.cached);
-  const promptTokens = (input ?? 0) + (record.cached ?? 0);
-  const resolved = resolvePricing(record.provider, record.model, promptTokens);
-  let breakdown = resolved ? costBreakdownWithPricing({ ...record, input }, resolved.pricing) : null;
-  // Price thresholds apply to each prompt, not a multi-call turn's total input.
-  if (record.requests?.length && resolved) {
-    const parts = record.requests.map((request) => {
-      const fresh = freshInput(usageSemantics(record.provider, record.model), request.input, request.cached);
-      const rate = resolvePricing(record.provider, record.model, (fresh ?? 0) + (request.cached ?? 0));
+type PriceableUsage = Pick<TurnRecord, "provider" | "model" | "input" | "cached" | "output"> & {
+  requests?: Array<Pick<NonNullable<TurnRecord["requests"]>[number], "input" | "cached" | "output">>;
+};
+
+/** Prices raw provider usage, including per-request tiers when observations are available. */
+export function estimateUsageCost(usage: PriceableUsage): {
+  effectiveCostUsd: number | null;
+  costSource: Exclude<CostSource, "reported"> | null;
+  costBreakdown: ReturnType<typeof costBreakdownWithPricing>;
+} {
+  const semantics = usageSemantics(usage.provider, usage.model);
+  const input = freshInput(semantics, usage.input, usage.cached);
+  const promptTokens = (input ?? 0) + (usage.cached ?? 0);
+  const resolved = resolvePricing(usage.provider, usage.model, promptTokens);
+  let breakdown = resolved ? costBreakdownWithPricing({ ...usage, input, costUsd: null }, resolved.pricing) : null;
+  if (usage.requests?.length && resolved) {
+    const parts = usage.requests.map((request) => {
+      const fresh = freshInput(semantics, request.input, request.cached);
+      const rate = resolvePricing(usage.provider, usage.model, (fresh ?? 0) + (request.cached ?? 0));
       return rate ? costBreakdownWithPricing({ ...request, input: fresh, costUsd: null }, rate.pricing) : null;
     });
     if (parts.every((part) => part !== null)) {
       const sum = parts.reduce((total, part) => ({ inUsd: total.inUsd + part!.inUsd,
         cacheUsd: total.cacheUsd + part!.cacheUsd, outUsd: total.outUsd + part!.outUsd }), { inUsd: 0, cacheUsd: 0, outUsd: 0 });
-      breakdown = { ...sum, otherUsd: record.costUsd === null ? null : record.costUsd - sum.inUsd - sum.cacheUsd - sum.outUsd };
+      breakdown = { ...sum, otherUsd: null };
     }
   }
-  const estimate = breakdown ? breakdown.inUsd + breakdown.cacheUsd + breakdown.outUsd : null;
+  return {
+    effectiveCostUsd: breakdown ? breakdown.inUsd + breakdown.cacheUsd + breakdown.outUsd : null,
+    costSource: resolved?.source ?? null,
+    costBreakdown: breakdown,
+  };
+}
+
+export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
+  const input = freshInput(usageSemantics(record.provider, record.model), record.input, record.cached);
+  const estimated = estimateUsageCost(record);
+  const estimate = estimated.effectiveCostUsd;
+  const breakdown = estimated.costBreakdown && record.costUsd !== null
+    ? { ...estimated.costBreakdown, otherUsd: record.costUsd - estimate! }
+    : estimated.costBreakdown;
   return {
     ...record,
     input,
     seq,
     effectiveCostUsd: record.costUsd ?? estimate,
-    costSource: record.costUsd !== null ? "reported" : (resolved?.source ?? null),
+    costSource: record.costUsd !== null ? "reported" : estimated.costSource,
     costBreakdown: breakdown,
   };
 }
