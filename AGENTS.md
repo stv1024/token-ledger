@@ -1,6 +1,6 @@
 # AGENTS.md — 开发调试速查
 
-TokenLedger 最低支持 Paseo v0.9.1，不设版本上限（id `token-ledger`，SDK 固定 0.9.1；已验证宿主 0.9.1、0.10.2）。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
+TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
 ## 开发循环
 
@@ -25,7 +25,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 ## 架构要点（从 daemon 源码验证过，别只信官方文档）
 
-- 自 0.8 起必须分离入口：`index.client.tsx` / `index.server.ts`，代码分别放 `client/`、`server/`、`shared/`。文件后缀不再划分边界；禁止跨端 import。当前 manifest 声明 `requirements.paseo: ">=0.9.1"`；不要仅因宿主次版本升级而新增上限。只有采用必要的新 API 或确认破坏性变更时才调整范围，实测版本单独记录。
+- 自 0.8 起必须分离入口：`index.client.tsx` / `index.server.ts`，代码分别放 `client/`、`server/`、`shared/`。文件后缀不再划分边界；禁止跨端 import。当前 manifest 声明 `requirements.paseo: ">=0.11.0"`；不要仅因宿主次版本升级而新增上限。只有采用必要的新 API 或确认破坏性变更时才调整范围，实测版本单独记录。
 - 服务端 contribute 拿到 `handle/on/before`，`paseo` 在 RPC 和生命周期回调中提供。`before(agent.session_open)` 启动订阅，`on(agent.turn_started)` 覆盖 reload 后已有会话；客户端 ensure 尽早连接已有会话。**新建 agent 在 session_open 时尚未进入目录，不能在此 refresh 新 agent。**
 - **wire 层 `agent_stream` 没有 `usage_updated`**：轮中 usage 走 `agent_update` upsert 快照（`lastUsage`/`activeTurn`），且必须先 `paseo.agents.list({ subscribe: {} })` 才会推送。turn 生命周期（started/completed/failed/canceled + turnId + 轮末 usage）走 `agents.ref(id).timeline.subscribe`。
 - usage 语义（2026-09-04 实测）：Claude 轮末 usage 是**逐轮**汇总、`totalCostUsd` 是**会话累计**（所以记录里存 delta + raw 两份）；Codex 每次模型请求报一次 `last` 值，多请求轮靠去重求和。快照会把上一轮旧 usage 回放进新一轮——tracker 用 agent 级 `lastObservation` 基线挡掉。
@@ -61,6 +61,17 @@ paseo agent archive <id>                                  # 测完归档，别�
 - `shared/preferences.ts` 定义宿主原生设置，`server/preferences.ts` 读取并订阅；客户端用 `useSettings`。设置读回与通知有竞态，迟到 read 不能覆盖更新值。价格配置 revision 必须使 read-model 失效。
 - 0.9.1 仍未公开 cache-write 和 provider 内部子代理 usage；不要把本地结构支持写成上游已经提供数据。标准模型价格需精确匹配，未知新版本或 Fast/Batch 后缀不能套用旧模型回退价。
 
+## 0.11 适配约束
+
+- **发布代码禁止 import `@getpaseo/client` / `@getpaseo/protocol`**（含 type-only）。宿主编译插件时会解析 type-only import，但只提供 SDK specifier、zod、react、react-native、@tanstack/react-query、@types/node。git 安装不跑 `npm install`（只跑 manifest `build`），npm 安装不装 devDependencies，所以其他类型依赖会让安装失败（0.11.1 实测 `Could not resolve type dependency`）。客户端类型从 `client/paseo-types.ts` 取，服务端从 `server/paseo-types.ts` 取（都由宿主 `PaseoApi` 推导）。`shared/` 不能 import `/client` 或 `/server` SDK，用结构类型和泛型。测试文件不进 bundle，可以继续用 devDependencies。
+- 改动依赖或 import 后，用无 `node_modules` 的副本验证：复制源码到临时目录、改 manifest id、让 contribute 提前返回，`paseo plugin add <目录>`，看到 "Plugin ready" 后 `paseo plugin remove` 并删除目录。
+- 总览是 `addScreen`（id `ledger-overview` 不变），`range` 放在 screen params 里（`today`/`7d`/`30d`/`all`，缺省 all）。screen props 没有 setParams；切换范围用 `client.openScreen`（宿主 router.push，会产生历史记录），标题函数随 params 变化。
+- 侧边栏是 `addSidebarFooterItem` + `SidebarRow`，trailing 显示今日费用。"今天"按客户端本地午夜计算，以 ISO `since` 传给 `ledger.overview`；服务端按 `Date.parse(endedAt)` 过滤 read-model 行，不在服务端猜时区。
+- `addSurface` / `addSidebarItem` / `openSurface` 已弃用，不要再用。不接 `registerUsageSource`（那是订阅额度窗口，不是逐轮 usage；用户已决定不放进 Usage 面板）。
+- 0.11.1 仍未公开 cache-write 和 provider 内部子代理 usage。
+
 ## 发布
 
-仓库 `stv1024/token-ledger`。发版打 tag（如 `v0.1.1`）+ GitHub Release，用户侧用 `paseo plugin add stv1024/token-ledger --ref <tag>` 安装。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。
+仓库 `stv1024/token-ledger`。发版打 tag（如 `v0.1.1`）+ GitHub Release + `npm publish`（包名 `paseo-token-ledger`）。用户侧用 `paseo plugin add github:stv1024/token-ledger --ref <tag>` 安装（0.11 起不带 `github:` 前缀的 `owner/name` 会走官方 registry，且 registry 拒绝 `--ref`）。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。
+
+官方 registry（`getpaseo/plugins`，记录 `plugins/stv1024/token-ledger.json`）固定一个 npm 版本。发布 npm 后，bot 每天 05:17 / 17:17 UTC 自动开 bump PR，维护者审核合并后才上线；不需要再提交 issue。`OVERVIEW.md` 是 registry 详情页，随包发布；registry 校验拒绝其中出现 `paseo plugin add`、`npm install`、`npm i`。manifest 的 `icon`（包内 PNG）和 `media` 文件必须列进 package.json `files`。registry 记录里的 `listing.*` 按字段覆盖 manifest。

@@ -1,10 +1,19 @@
-import type { PaseoAgent, PaseoAgentUpdate, PaseoApi } from "@getpaseo/client";
-import type { SessionOutboundMessage } from '@getpaseo/protocol/messages';
-import { subscribeCatalog, type CatalogSubscription } from './catalog-subscription.ts';
+import { subscribeCatalog, type CatalogSubscription, type OwnedSubscription } from './catalog-subscription.ts';
+
+// Shared code cannot import host client or server SDK types. Callers pass the
+// host PaseoApi, and the agent type is inferred from it.
+type AgentPage<A> = { entries: readonly { agent: A }[]; pageInfo: { nextCursor?: string | null } };
+export type AgentUpdate<A> = { kind: 'upsert'; agent: A } | { kind: 'remove'; agentId: string };
+export interface AgentCatalogApi<A> {
+  readonly agents: {
+    list(options: { subscribe: {}; page: { limit: number } }): Promise<AgentPage<A> & { subscription: OwnedSubscription<AgentPage<A>> }>;
+    list(options: { page: { limit: number; cursor?: string } }): Promise<AgentPage<A>>;
+  };
+}
 
 /** A list page is not the complete catalog. Subscribe only on the first page. */
-export async function listAgents(paseo: PaseoApi): Promise<PaseoAgent[]> {
-  const agents = new Map<string, PaseoAgent>();
+export async function listAgents<A extends { id: string }>(paseo: AgentCatalogApi<A>): Promise<A[]> {
+  const agents = new Map<string, A>();
   let cursor: string | undefined;
   const seen = new Set<string>();
   do {
@@ -19,9 +28,9 @@ export async function listAgents(paseo: PaseoApi): Promise<PaseoAgent[]> {
   return [...agents.values()];
 }
 
-export function subscribeAgents(paseo: PaseoApi, handlers: {
-  onSnapshot(agents: PaseoAgent[], restored: boolean): void;
-  onUpdate(update: PaseoAgentUpdate): void;
+export function subscribeAgents<A extends { id: string }>(paseo: AgentCatalogApi<A>, handlers: {
+  onSnapshot(agents: A[], restored: boolean): void;
+  onUpdate(update: AgentUpdate<A>): void;
   onError(error: unknown): void;
 }): CatalogSubscription {
   return subscribeCatalog({
@@ -30,7 +39,7 @@ export function subscribeAgents(paseo: PaseoApi, handlers: {
     entries: (page) => page.entries.map(({ agent }) => agent),
     id: (agent) => agent.id,
     update: (value) => {
-      const message = value as SessionOutboundMessage;
+      const message = value as { type?: unknown; payload: AgentUpdate<A> };
       if (message.type !== 'agent_update') return null;
       const update = message.payload;
       return update.kind === 'upsert' ? { id: update.agent.id, item: update.agent, value: update }

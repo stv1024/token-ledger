@@ -1,5 +1,5 @@
 import { usePaseo, useRpc, useSettings } from '@getpaseo/plugin/client';
-import type { PaseoApi } from '@getpaseo/client';
+import type { PaseoApi } from './paseo-types.ts';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ledgerSync, ledgerOverview, type SyncResult } from '../shared/ledger.ts';
@@ -66,13 +66,14 @@ export function useLedger(agentId: string) {
   });
 }
 
-export function useOverview() {
+/** `since` is an ISO bound for the range; null means all time. */
+export function useOverview(since: string | null) {
   const settings = useSettings(preferences);
   const overview = useRpc(ledgerOverview);
   useRefresh(settings.status === 'ready' ? `${settings.values.openRouterPricing}:${settings.values.builtinPricing}` : null);
   return useQuery({
-    queryKey: ['token-ledger', 'overview'],
-    queryFn: () => overview({}),
+    queryKey: ['token-ledger', 'overview', since],
+    queryFn: () => overview(since === null ? {} : { since }),
     staleTime: 1000,
     refetchInterval: (query) => refreshIntervalMs(settings.status === 'ready' ? settings.values.refreshInterval : 'normal', !!query.state.data?.groups.some((g) => g.agents.some((a) => a.active))),
   });

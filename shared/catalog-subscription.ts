@@ -1,4 +1,9 @@
-import type { OwnedSubscription } from '@getpaseo/client';
+// Shared code cannot import host client or server SDK types. This is the
+// structural part of the SDK OwnedSubscription that the catalog uses.
+export type OwnedSubscription<P> = {
+  subscribe(observer: { snapshot(page: P): void; update(message: unknown): void; error?(error: unknown): void }): () => void;
+  release(): Promise<void>;
+};
 
 type Page = { pageInfo: { nextCursor?: string | null } };
 export type CatalogSubscription = {

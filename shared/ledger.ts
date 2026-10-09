@@ -153,7 +153,10 @@ export type OverviewResult = z.infer<typeof OverviewOutputSchema>;
 
 export const ledgerOverview = defineRpc({
   name: "ledger.overview",
-  input: z.object({}),
+  input: z.object({
+    /** Only turns that ended at or after this instant. The client owns the time zone. */
+    since: z.iso.datetime().optional(),
+  }),
   output: OverviewOutputSchema,
 });
 

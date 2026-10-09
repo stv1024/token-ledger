@@ -3,7 +3,7 @@ import { loadJournal, saveJournal } from "./journal.ts";
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { subscribeAgents } from "../shared/agents.ts";
 import type { CatalogSubscription } from '../shared/catalog-subscription.ts';
-import type { PaseoAgent, PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
+import type { PaseoAgent, PaseoAgentTimelineEvent, PaseoApi } from "./paseo-types.ts";
 import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
 import { freshInput, usageSemantics, providerSemantics } from "../shared/semantics.ts";
 import { ensurePricing, estimateUsageCost } from "./pricing.ts";
@@ -15,7 +15,7 @@ import {
   loadStore,
 } from "./store.ts";
 
-import { readModel, EMPTY_SUMMARY } from "./read-model.ts";
+import { readModel, summaryFromRows, EMPTY_SUMMARY } from "./read-model.ts";
 import { Catalog } from "./catalog.ts";
 import { TimelinePublisher } from "./timeline.ts";
 import { TimelineSubscriptions } from './subscriptions.ts';
@@ -314,7 +314,8 @@ export async function handleSync(
   };
 }
 
-export async function handleOverview(_input: object, context: { paseo: PaseoApi }): Promise<OverviewResult> {
+export async function handleOverview(input: { since?: string }, context: { paseo: PaseoApi }): Promise<OverviewResult> {
+  const since = input.since ? Date.parse(input.since) : null;
   await ensureTracker(context.paseo);
   await ensurePricing();
   await persistence;
@@ -333,7 +334,11 @@ export async function handleOverview(_input: object, context: { paseo: PaseoApi 
     const snapshot = snapshots.get(agentId) ?? null;
     const state = agents.get(agentId);
     const open = state?.open ?? null;
-    const summary = stored?.summary ?? { ...EMPTY_SUMMARY };
+    const summary = !stored ? { ...EMPTY_SUMMARY }
+      : since === null ? stored.summary
+      : summaryFromRows(stored.rows.filter((row) => Date.parse(row.endedAt) >= since));
+    // A range lists only the agents that used tokens in it or that work now.
+    if (since !== null && summary.turns === 0 && open === null) continue;
     totals.turns += summary.turns;
     totals.input += summary.input;
     totals.cached += summary.cached;

@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        paseo: ['0.9.1', '0.10.2', 'latest']
+        paseo: ['0.11.0', '0.11.1', 'latest']
     name: Paseo SDK ${{ matrix.paseo }}
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
           node-version: 24
       - run: npm ci
       - name: Check against the selected Paseo SDK
-        if: matrix.paseo != '0.9.1'
+        if: matrix.paseo != '0.11.1'
         run: npm install --no-save --package-lock=false @getpaseo/plugin@${{ matrix.paseo }} @getpaseo/client@${{ matrix.paseo }} @getpaseo/protocol@${{ matrix.paseo }}
       - run: npm run typecheck
       - run: npm test

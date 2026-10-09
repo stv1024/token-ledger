@@ -1,4 +1,4 @@
-import type { PaseoApi } from '@getpaseo/client';
+import type { PaseoApi } from './paseo-types.ts';
 import type { TurnRecord } from '../shared/ledger.ts';
 import { UsageTimelineSchema, USAGE_TIMELINE_KIND } from '../shared/timeline.ts';
 import { enrichTurn, ensurePricing } from './pricing.ts';

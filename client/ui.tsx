@@ -14,6 +14,13 @@ export function fmtCost(value: number | null): string | null {
   return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
 }
 
+/** Cost when priced, else total tokens. "≈" marks a cost that includes estimates. */
+export function costOrTokens(summary: Summary): string {
+  const cost = fmtCost(summary.effectiveCostUsd);
+  if (cost) return `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}`;
+  return `${fmtTokens(summary.input + summary.cached + (summary.cacheWrite ?? 0) + summary.output)} tok`;
+}
+
 /** Compact cost for per-component cells; "–" when unknown. */
 export function fmtCostSmall(value: number | null): string {
   if (value === null) return "–";

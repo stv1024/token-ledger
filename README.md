@@ -30,31 +30,41 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
   <img src="images/screenshot-pill.jpg" alt="TokenLedger composer pill showing cost and context usage next to the composer; pressing it opens the panel" width="560">
 </p>
 
-**Overview** (sidebar → TokenLedger) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Tapping a row jumps to that agent.
+**Sidebar** — a **TokenLedger** row in the sidebar footer shows today's cost (or tokens when no price is known), with an activity icon while a turn is running. "Today" starts at local midnight on the device that shows it.
+
+**Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**; the range is part of the screen link and its title. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
 
 **Timeline** — each newly finished turn gets one passive usage summary after its ledger record is saved. It uses the same normalized counts, cost source and quality marks as the panel. No polling or message replacement is involved.
 
 ## Compatibility
 
-TokenLedger **v0.6.3** requires **Paseo 0.9.1 or newer**, on both the daemon and the app, without an upper version limit. Verified hosts include **0.9.1 and 0.10.2**; allowing newer versions is not a claim that every future release has been tested. SDK dependencies remain pinned to 0.9.1, with CI checks against the minimum, 0.10.2, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
+TokenLedger **v0.7.0** requires **Paseo 0.11.0 or newer**, on both the daemon and the app, without an upper version limit. It uses the screen and sidebar footer APIs that Paseo 0.11 added. The verified host is **0.11.1**; allowing newer versions is not a claim that every future release has been tested. SDK development dependencies are pinned to 0.11.1, with CI checks against the minimum, the pin, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
 
-Upgrade from **v0.6.2** to remove its **0.9.1–0.9.x** restriction; see the [v0.6.3 release notes](docs/releases/v0.6.3.md). Paseo 0.8 users should stay on `v0.5.1`; Paseo 0.7 users should stay on `v0.3.1`. Existing `ledger.jsonl` records remain readable; no migration or deletion is required. See the [v0.6.0 release notes](docs/releases/v0.6.0.md) for the 0.9.1 migration details.
+Paseo 0.9.1–0.10.x users should stay on `v0.6.3`; Paseo 0.8 users on `v0.5.1`; Paseo 0.7 users on `v0.3.1`. Existing `ledger.jsonl` records remain readable; no migration or deletion is required. See the [v0.6.0 release notes](docs/releases/v0.6.0.md) for the 0.9.1 migration details.
 
 ## Install
 
-Install the published npm package (Paseo 0.9.1 or newer):
+Install from the [Paseo plugin registry](https://paseo.sh/plugins/stv1024/token-ledger) (Paseo 0.11.0 or newer):
+
+```bash
+paseo plugin add stv1024/token-ledger
+```
+
+The registry installs the version its maintainers last reviewed, so a new release reaches it after review. To get the latest npm release directly:
 
 ```bash
 paseo plugin install npm:paseo-token-ledger
 ```
 
-Or paste `npm:paseo-token-ledger` into **Settings → Plugins → Plugin source**. The plugin is also listed on [paseo.cafe](https://paseo.cafe/plugins/token-ledger).
+Or paste either source into **Settings → Plugins → Plugin source**.
 
 To install a tagged release from GitHub instead:
 
 ```bash
-paseo plugin add stv1024/token-ledger --ref v0.6.3
+paseo plugin add github:stv1024/token-ledger --ref v0.7.0
 ```
+
+Since Paseo 0.11, a bare `owner/name` source means the official plugin registry, which rejects `--ref`. Keep the `github:` prefix for Git installs. On Paseo 0.9.1–0.10.x, use `paseo plugin add stv1024/token-ledger --ref v0.6.3`.
 
 Inspect or apply updates with:
 
@@ -63,7 +73,7 @@ paseo plugin update token-ledger --check
 paseo plugin update token-ledger
 ```
 
-npm installations update to the latest npm release. Git install selectors do not pin future updates: without an explicit `--ref`, Git updates follow the remote's default branch. Existing GitHub installations can keep updating from Git; switching to npm means `paseo plugin remove token-ledger` followed by the npm install (ledger data in `~/.paseo/plugins/token-ledger/` is kept). Local development installations use `paseo plugin reload token-ledger` after source changes.
+Registry installations update to the registry's current reviewed version. npm installations update to the latest npm release. Git install selectors do not pin future updates: without an explicit `--ref`, Git updates follow the remote's default branch. Existing GitHub installations can keep updating from Git; switching to npm means `paseo plugin remove token-ledger` followed by the npm install (ledger data in `~/.paseo/plugins/token-ledger/` is kept). Local development installations use `paseo plugin reload token-ledger` after source changes.
 
 Update both the daemon and app to a compatible Paseo version before updating the plugin. Check `paseo plugin ls` afterward; TokenLedger should be `running`. Reopen the desktop app if an existing window still shows an older plugin UI.
 
@@ -173,7 +183,7 @@ paseo plugin reload token-ledger
 paseo plugin logs token-ledger
 ```
 
-Layout: `index.client.tsx` registers the UI; `index.server.ts` registers RPCs and lifecycle hooks. `client/` contains the panel, native button-descriptor pill, overview, and shared UI. `server/turns.ts` is the tested turn state machine, `server/tracker.ts` owns subscriptions and RPCs, `server/store.ts` serializes JSONL writes, and `server/pricing.ts` resolves prices. `shared/` contains RPC contracts, aggregation, pagination, and usage semantics.
+Layout: `paseo-plugin.json` declares the registry name, icon, and screenshots, and `OVERVIEW.md` is the registry listing page (no install commands; the registry rejects them). `index.client.tsx` registers the UI; `index.server.ts` registers RPCs and lifecycle hooks. `client/` contains the panel, native button-descriptor pill, overview screen, sidebar footer row, and shared UI. Shipped code takes Paseo client types only from the host SDK (`client/paseo-types.ts`, `server/paseo-types.ts`), so Git and npm installs need no dependencies. `server/turns.ts` is the tested turn state machine, `server/tracker.ts` owns subscriptions and RPCs, `server/store.ts` serializes JSONL writes, and `server/pricing.ts` resolves prices. `shared/` contains RPC contracts, aggregation, pagination, and usage semantics.
 
 ## License
 

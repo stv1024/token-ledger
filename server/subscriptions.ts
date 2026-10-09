@@ -1,4 +1,4 @@
-import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from '@getpaseo/client';
+import type { PaseoAgentTimelineEvent, PaseoAgentTimelineSubscription, PaseoApi } from './paseo-types.ts';
 
 type Watch = { handle?: PaseoAgentTimelineSubscription; ready: Promise<void> };
 type Callbacks = {

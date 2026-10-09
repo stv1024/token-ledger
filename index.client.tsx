@@ -1,7 +1,9 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginScreenProps } from "@getpaseo/plugin/client";
 import { TokenLedgerOverview } from "./client/overview.tsx";
 import { TokenLedgerPanel } from "./client/panel.tsx";
 import { contributePills } from "./client/pill.tsx";
+import { OVERVIEW_SCREEN, parseRange, RANGE_LABELS } from "./client/range.ts";
+import { LedgerSidebarItem } from "./client/sidebar.tsx";
 
 import { createPanelPlacement } from "./client/layout.ts";
 import { UsageTimelineRow } from "./client/timeline.tsx";
@@ -20,13 +22,15 @@ export default function contribute(client: PluginClientContext) {
     locations: ["workspace", "explorer"],
     Component: TokenLedgerPanel,
   });
-  client.addSurface("ledger-overview", TokenLedgerOverview);
-  client.addSidebarItem({
-    id: "ledger-overview",
-    title: "TokenLedger Overview",
-    icon: "Coins",
-    surface: "ledger-overview",
+  function OverviewScreen(props: PluginScreenProps) {
+    return <TokenLedgerOverview {...props} onRange={(range) => client.openScreen({ screenId: OVERVIEW_SCREEN, params: { range } })} />;
+  }
+  client.addScreen({
+    id: OVERVIEW_SCREEN,
+    title: (params) => `TokenLedger · ${RANGE_LABELS[parseRange(params.range)]}`,
+    Component: OverviewScreen,
   });
+  client.addSidebarFooterItem({ id: "ledger-today", title: "TokenLedger", Component: LedgerSidebarItem });
   client.addCommandCenterItem({
     id: "open-ledger",
     title: "Open TokenLedger Session Ledger",
@@ -43,8 +47,8 @@ export default function contribute(client: PluginClientContext) {
     icon: "Coins",
     keywords: ["token", "usage", "cost", "ledger", "overview", "all"],
     context: "global",
-    onSelect({ openSurface }) {
-      openSurface("ledger-overview");
+    onSelect({ openScreen }) {
+      openScreen({ screenId: OVERVIEW_SCREEN });
     },
   });
   return contributePills(client, placement);

@@ -78,6 +78,13 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     assert.equal(overview.groups[1].workspaceName, 'Workspace');
     await tracker.handleOverview({}, {paseo});
     assert.equal(listCalls, beforeOverview);
+    const inRange = ledgerOverview.output.parse(await tracker.handleOverview({since: '2026-09-14T00:00:01.000Z'}, {paseo}));
+    assert.equal(inRange.totals.turns, 1, 'a turn that ends on the bound is in the range');
+    assert.equal(inRange.totals.cacheWrite, 10);
+    assert.deepEqual(inRange.groups.flatMap((group) => group.agents.map((agent) => agent.agentId)), ['a'], 'idle agents without turns in the range are hidden');
+    const afterRange = ledgerOverview.output.parse(await tracker.handleOverview({since: '2026-09-14T00:00:01.001Z'}, {paseo}));
+    assert.equal(afterRange.totals.turns, 0);
+    assert.deepEqual(afterRange.groups, []);
     await tracker.stopTracker(); assert.equal(removed, 3);
     assert.equal(published.length, 2);
     assert.equal(published[0].id, published[1].id);

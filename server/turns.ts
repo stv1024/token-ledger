@@ -1,6 +1,6 @@
 ﻿import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { PaseoAgentTimelineEvent } from "@getpaseo/client";
+import type { PaseoAgentTimelineEvent } from "./paseo-types.ts";
 import { finalizeTurn, mergeObservation, sameTokens, tokenObservation, type UsageLike } from "../shared/aggregate.ts";
 import type { TurnRecord } from "../shared/ledger.ts";
 

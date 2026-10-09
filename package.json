@@ -1,6 +1,6 @@
 {
   "name": "paseo-token-ledger",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Paseo plugin: per-turn token usage, cache counts, and cost tracking with a persistent local ledger.",
   "type": "module",
   "license": "MIT",
@@ -25,11 +25,15 @@
   ],
   "files": [
     "paseo-plugin.json",
+    "OVERVIEW.md",
     "index.client.tsx",
     "index.server.ts",
     "client/",
     "server/",
     "shared/",
+    "images/icon.png",
+    "images/screenshot-panel.png",
+    "images/screenshot-pill.jpg",
     "!**/*.test.ts",
     "!shared/subscription-test-helpers.ts"
   ],
@@ -37,12 +41,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test shared/*.test.ts server/*.test.ts"
   },
-  "dependencies": {
-    "@getpaseo/client": "0.9.1",
-    "@getpaseo/protocol": "0.9.1"
-  },
   "devDependencies": {
-    "@getpaseo/plugin": "0.9.1",
+    "@getpaseo/client": "0.11.1",
+    "@getpaseo/plugin": "0.11.1",
+    "@getpaseo/protocol": "0.11.1",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^24.0.0",
     "@types/react": "~19.2.0",

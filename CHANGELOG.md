@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 (2026-10-09) — Paseo 0.11 screens and sidebar
+
+Requires Paseo **0.11.0 or newer**. Paseo 0.9.1–0.10.x users should stay on `v0.6.3`. Existing ledger records and custom prices remain compatible.
+
+- Make the overview a Paseo 0.11 screen. Pick Today, Last 7 days, Last 30 days, or All time; the range is a screen param, so links and the header title follow it. A range lists agents with turns that ended in it and agents with a turn in flight. Day ranges start at local midnight on the device that shows them.
+- Replace the sidebar header link with a sidebar footer row that shows today's cost (or tokens when no price is known) and an activity icon while a turn runs. The row opens the overview on Today.
+- Fix `github:` and `git:` installs on Paseo 0.11, which failed with `Could not resolve type dependency "@getpaseo/client"`. Shipped code now derives Paseo client types from the host SDK, so `@getpaseo/client` and `@getpaseo/protocol` are development dependencies only. npm installs need no dependencies either.
+- Use `github:stv1024/token-ledger` for Git installs; since Paseo 0.11, a bare `owner/name` source means the plugin registry.
+- Pin SDK development dependencies to 0.11.1 and check CI against 0.11.0, 0.11.1, and the latest SDK. See the [compatibility notes](docs/compatibility.md).
+- Prepare the [Paseo plugin registry](https://paseo.sh/plugins/stv1024/token-ledger) listing: the manifest declares the display name, a PNG icon, and screenshots, and the package ships an author `OVERVIEW.md` for the listing page.
+
 ## v0.6.3 (2026-09-30) — Paseo 0.10.2 compatibility
 
 - Allow Paseo `>=0.9.1` without an upper version limit. The previous `<0.10.0` ceiling prevented loading on Paseo 0.10.2 even though the APIs used by TokenLedger remain compatible. Keep SDK dependencies pinned to 0.9.1 and document tested hosts separately from the allowed range.

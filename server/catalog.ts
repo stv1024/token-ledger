@@ -1,5 +1,4 @@
-import type { PaseoAgent, PaseoApi, PaseoWorkspace, PaseoWorkspaceListResult, PaseoWorkspaceUpdate } from '@getpaseo/client';
-import type { SessionOutboundMessage } from '@getpaseo/protocol/messages';
+import type { PaseoAgent, PaseoApi, PaseoWorkspace, PaseoWorkspaceListResult, PaseoWorkspaceUpdate } from './paseo-types.ts';
 import { subscribeCatalog, type CatalogSubscription } from '../shared/catalog-subscription.ts';
 
 type Metadata = Pick<PaseoAgent, 'id' | 'workspaceId' | 'title' | 'provider' | 'model' | 'status' | 'updatedAt' | 'archivedAt'>;
@@ -25,7 +24,7 @@ export class Catalog {
       entries: (page) => page.entries,
       id: (workspace) => workspace.id,
       update: (value) => {
-        const message = value as SessionOutboundMessage;
+        const message = value as { type?: unknown; payload: PaseoWorkspaceUpdate };
         if (message.type !== 'workspace_update') return null;
         const update = message.payload;
         return update.kind === 'upsert' ? { id: update.workspace.id, item: update.workspace, value: update }

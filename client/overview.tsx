@@ -1,12 +1,13 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { type PluginScreenProps } from "@getpaseo/plugin/client";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useMemo } from "react";
 import { useOverview } from "./data.ts";
 import { Pressable, Text, View } from "react-native";
 import type { AgentUsageRow } from "../shared/ledger.ts";
-import { fmtCost, fmtTime, fmtTokens, SummaryRow, UsageCoverageNote } from "./ui.tsx";
+import { costOrTokens, fmtTime, SummaryRow, UsageCoverageNote } from "./ui.tsx";
+import { parseRange, RANGE_LABELS, RANGES, useRangeStart, type Range } from "./range.ts";
 
 
 function agentStatusColor(row: AgentUsageRow, theme: PluginTheme): string {
@@ -25,9 +26,6 @@ function AgentRow({
   theme: PluginTheme;
   onOpen: (() => void) | null;
 }) {
-  const rawCost = fmtCost(row.summary.effectiveCostUsd);
-  const cost = rawCost ? `${row.summary.estimatedTurns > 0 ? "≈" : ""}${rawCost}` : null;
-  const totalTokens = row.summary.input + row.summary.cached + (row.summary.cacheWrite ?? 0) + row.summary.output;
   const name = row.title ?? row.agentId.slice(0, 8);
   const meta = [row.model ?? row.provider, row.lastActivityAt ? fmtTime(row.lastActivityAt) : null]
     .filter(Boolean)
@@ -60,7 +58,7 @@ function AgentRow({
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>
         <Text style={{ color: theme.colors.foreground, fontSize: 13, fontVariant: ["tabular-nums"] }}>
-          {cost ?? `${fmtTokens(totalTokens)} tok`}
+          {costOrTokens(row.summary)}
         </Text>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
           {row.summary.turns} turn{row.summary.turns === 1 ? "" : "s"}
@@ -70,8 +68,47 @@ function AgentRow({
   );
 }
 
-export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurfaceProps) {
-  const { data, error } = useOverview();
+function RangePicker({ range, theme, onRange }: { range: Range; theme: PluginTheme; onRange: (range: Range) => void }) {
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      {RANGES.map((option) => {
+        const selected = option === range;
+        return (
+          <Pressable
+            key={option}
+            disabled={selected}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={() => onRange(option)}
+            style={({ pressed }) => ({
+              paddingVertical: 4,
+              paddingHorizontal: 10,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: selected ? theme.colors.accent : theme.colors.border,
+              backgroundColor: selected ? theme.colors.surface2 : pressed ? theme.colors.surface1 : "transparent",
+            })}
+          >
+            <Text style={{ color: selected ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: 12 }}>
+              {RANGE_LABELS[option]}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** The range lives in the screen params, so the header title and deep links follow it. */
+export function TokenLedgerOverview({
+  theme,
+  layout,
+  navigation,
+  params,
+  onRange,
+}: PluginScreenProps & { onRange: (range: Range) => void }) {
+  const range = parseRange(params.range);
+  const { data, error } = useOverview(useRangeStart(range));
   const { dense, setWidth } = useDenseLayout(layout.compact);
 
   const styles = useMemo(
@@ -92,7 +129,7 @@ export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurface
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <Text style={{ color: theme.colors.foreground, fontSize: 17, fontWeight: "600" }}>TokenLedger Overview</Text>
+      <RangePicker range={range} theme={theme} onRange={onRange} />
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>
@@ -102,7 +139,7 @@ export function TokenLedgerOverview({ theme, layout, navigation }: PluginSurface
             <UsageCoverageNote theme={theme} />
           </View>
           {data.groups.length === 0 ? (
-            <Text style={styles.muted}>No usage recorded yet.</Text>
+            <Text style={styles.muted}>{range === "all" ? "No usage recorded yet." : "No usage in this range."}</Text>
           ) : (
             data.groups.map((group) => (
               <View key={group.workspaceId ?? "__none__"} style={{ gap: 4 }}>
