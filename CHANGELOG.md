@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add an overview screenshot (demo data, with the sidebar footer row) to the README and as the first manifest media image.
+
 ## v0.7.0 (2026-10-09) — Paseo 0.11 screens and sidebar
 
 Requires Paseo **0.11.0 or newer**. Paseo 0.9.1–0.10.x users should stay on `v0.6.3`. Existing ledger records and custom prices remain compatible.

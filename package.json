@@ -32,6 +32,7 @@
     "server/",
     "shared/",
     "images/icon.png",
+    "images/screenshot-overview.png",
     "images/screenshot-panel.png",
     "images/screenshot-pill.jpg",
     "!**/*.test.ts",

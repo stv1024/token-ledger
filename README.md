@@ -34,6 +34,10 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 **Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**; the range is part of the screen link and its title. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
 
+<p align="center">
+  <img src="images/screenshot-overview.png" alt="TokenLedger overview on Last 7 days with demo data: range buttons, totals for all sessions, and agent rows grouped by workspace; the TokenLedger row in the sidebar footer shows today's cost" width="720">
+</p>
+
 **Timeline** — each newly finished turn gets one passive usage summary after its ledger record is saved. It uses the same normalized counts, cost source and quality marks as the panel. No polling or message replacement is involved.
 
 ## Compatibility

@@ -70,6 +70,15 @@ paseo agent archive <id>                                  # 测完归档，别�
 - `addSurface` / `addSidebarItem` / `openSurface` 已弃用，不要再用。不接 `registerUsageSource`（那是订阅额度窗口，不是逐轮 usage；用户已决定不放进 Usage 面板）。
 - 0.11.1 仍未公开 cache-write 和 provider 内部子代理 usage。
 
+## 截图
+
+发布用截图不能出现真实 agent 标题、workspace 或项目名。用独立 demo daemon 和合成数据：
+
+- 新建 home 目录，config 只写 `daemon.listen`（换端口）、`relay.enabled: false`、`cors.allowedOrigins`（静态服务的 origin）、`pluginsEnabled: true`。**不要**复制 `~/.paseo/config.json`（含 provider 密钥）。`paseo daemon run --home <dir>` 前台运行，用 `paseo daemon stop --home <dir>` 只停它，不碰主 daemon。
+- `paseo project create <dir> --home <home>`、`paseo workspace create --path <dir> --isolation local --title <name> --home <home>` 建项目和 workspace。agent 记录直接写 `agents/<cwd 去冒号、分隔符换成 ->/<uuid>.json`（daemon 启动时读），账本写 `plugins/token-ledger/ledger.jsonl`，然后 `paseo plugin add <仓库目录> --home <home>`。
+- Web 客户端在桌面安装目录的 `resources/app-dist`。静态服务时往 index.html 注入 `globalThis.__PASEO_INITIAL_DAEMON_CONNECTION__={listen:"127.0.0.1:<port>",useTls:false}`，用 puppeteer-core 截图。总览可直接打开 `/h/<serverId>/plugin/token-ledger/surface/ledger-overview?param.range=7d`。
+- 截完停 demo daemon，删除 demo 目录。
+
 ## 发布
 
 仓库 `stv1024/token-ledger`。发版打 tag（如 `v0.1.1`）+ GitHub Release + `npm publish`（包名 `paseo-token-ledger`）。用户侧用 `paseo plugin add github:stv1024/token-ledger --ref <tag>` 安装（0.11 起不带 `github:` 前缀的 `owner/name` 会走官方 registry，且 registry 拒绝 `--ref`）。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。
