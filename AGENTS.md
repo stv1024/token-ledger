@@ -65,7 +65,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 - **发布代码禁止 import `@getpaseo/client` / `@getpaseo/protocol`**（含 type-only）。宿主编译插件时会解析 type-only import，但只提供 SDK specifier、zod、react、react-native、@tanstack/react-query、@types/node。git 安装不跑 `npm install`（只跑 manifest `build`），npm 安装不装 devDependencies，所以其他类型依赖会让安装失败（0.11.1 实测 `Could not resolve type dependency`）。客户端类型从 `client/paseo-types.ts` 取，服务端从 `server/paseo-types.ts` 取（都由宿主 `PaseoApi` 推导）。`shared/` 不能 import `/client` 或 `/server` SDK，用结构类型和泛型。测试文件不进 bundle，可以继续用 devDependencies。
 - 改动依赖或 import 后，用无 `node_modules` 的副本验证：复制源码到临时目录、改 manifest id、让 contribute 提前返回，`paseo plugin add <目录>`，看到 "Plugin ready" 后 `paseo plugin remove` 并删除目录。
-- 总览是 `addScreen`（id `ledger-overview` 不变），`range` 放在 screen params 里（`today`/`7d`/`30d`/`all`，缺省 all）。screen props 没有 setParams；切换范围用 `client.openScreen`（宿主 router.push，会产生历史记录），标题函数随 params 变化。
+- 总览是 `addScreen`（id `ledger-overview` 不变），`range` 放在 screen params 里（`today`/`7d`/`30d`/`all`，缺省 all）作为**初始**范围；屏内切换是组件 state。screen props 没有 setParams，`client.openScreen` 是宿主 router.push——每调一次叠一条历史，所以屏内切换不能走导航（曾导致点 range 按钮刷屏历史记录）；标题用静态字符串，params 派生标题在本地切换后会过期。
 - 侧边栏是 `addSidebarFooterItem` + `SidebarRow`，trailing 显示今日费用。"今天"按客户端本地午夜计算，以 ISO `since` 传给 `ledger.overview`；服务端按 `Date.parse(endedAt)` 过滤 read-model 行，不在服务端猜时区。
 - `addSurface` / `addSidebarItem` / `openSurface` 已弃用，不要再用。不接 `registerUsageSource`（那是订阅额度窗口，不是逐轮 usage；用户已决定不放进 Usage 面板）。
 - 0.11.1 仍未公开 cache-write 和 provider 内部子代理 usage。

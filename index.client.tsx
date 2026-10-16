@@ -1,8 +1,8 @@
-import type { PluginClientContext, PluginScreenProps } from "@getpaseo/plugin/client";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { TokenLedgerOverview } from "./client/overview.tsx";
 import { TokenLedgerPanel } from "./client/panel.tsx";
 import { contributePills } from "./client/pill.tsx";
-import { OVERVIEW_SCREEN, parseRange, RANGE_LABELS } from "./client/range.ts";
+import { OVERVIEW_SCREEN } from "./client/range.ts";
 import { LedgerSidebarItem } from "./client/sidebar.tsx";
 
 import { createPanelPlacement } from "./client/layout.ts";
@@ -22,13 +22,10 @@ export default function contribute(client: PluginClientContext) {
     locations: ["workspace", "explorer"],
     Component: TokenLedgerPanel,
   });
-  function OverviewScreen(props: PluginScreenProps) {
-    return <TokenLedgerOverview {...props} onRange={(range) => client.openScreen({ screenId: OVERVIEW_SCREEN, params: { range } })} />;
-  }
   client.addScreen({
     id: OVERVIEW_SCREEN,
-    title: (params) => `TokenLedger · ${RANGE_LABELS[parseRange(params.range)]}`,
-    Component: OverviewScreen,
+    title: "TokenLedger",
+    Component: TokenLedgerOverview,
   });
   client.addSidebarFooterItem({ id: "ledger-today", title: "TokenLedger", Component: LedgerSidebarItem });
   client.addCommandCenterItem({
