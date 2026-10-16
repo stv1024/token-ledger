@@ -68,7 +68,8 @@ paseo agent archive <id>                                  # 测完归档，别�
 - 总览是 `addScreen`（id `ledger-overview` 不变），`range` 放在 screen params 里（`today`/`7d`/`30d`/`all`，缺省 all）。screen props 没有 setParams；切换范围用 `client.openScreen`（宿主 router.push，会产生历史记录），标题函数随 params 变化。
 - 侧边栏是 `addSidebarFooterItem` + `SidebarRow`，trailing 显示今日费用。"今天"按客户端本地午夜计算，以 ISO `since` 传给 `ledger.overview`；服务端按 `Date.parse(endedAt)` 过滤 read-model 行，不在服务端猜时区。
 - `addSurface` / `addSidebarItem` / `openSurface` 已弃用，不要再用。不接 `registerUsageSource`（那是订阅额度窗口，不是逐轮 usage；用户已决定不放进 Usage 面板）。
-- 0.11.2 的 cache-write、Codex 内部子代理 usage、OMP final-drain/branch epoch 缺口仍在。OMP 统计已包含部分子代理，不能无条件再叠加。徽标使用 Session token snapshot，不以 unknown 代替已知快照；未知 scope 不求 token 总数。历史 Timeline 缺少 scope 元数据时只声明元数据缺失，不声明账本排除。更新后重载客户端以使用新字段。
+- OMP 轮末 drain（0.11.2 源码验证）：`turn_completed` 不带 usage，先于 poller 的最终 `usage_updated` 发出；最终快照仍带 activeTurn，且 usage 未变化时不发。所以 session scope 的 completed 轮先记 `open.ending`（随 journal 恢复），在第一个新观察、下一轮开始或 2s 超时时结算，状态和 endedAt 取 ending。失败/取消立即结算。session/unknown 的 `modelCalls` 为 null（快照数不是调用数）。
+- 0.11.2 的 cache-write、Codex 内部子代理 usage、OMP branch epoch 缺口仍在。OMP 统计已包含部分子代理，不能无条件再叠加。徽标使用 Session token snapshot，不以 unknown 代替已知快照；未知 scope 不求 token 总数。历史 Timeline 缺少 scope 元数据时只声明元数据缺失，不声明账本排除。更新后重载客户端以使用新字段。
 
 ## 截图
 

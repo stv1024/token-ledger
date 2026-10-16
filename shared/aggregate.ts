@@ -125,6 +125,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
   const durationMs =
     args.startedAt !== null ? Math.max(0, Date.parse(args.endedAt) - Date.parse(args.startedAt)) : null;
 
+  const scope = tokenScope(args);
   return {
     v: 1,
     // endedAt is part of the id because Paseo turnIds ("foreground-turn-N")
@@ -133,7 +134,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     agentId: args.agentId,
     turnId: args.turnId,
     provider: args.provider,
-    tokenScope: tokenScope(args),
+    tokenScope: scope,
     model: args.model,
     startedAt: args.startedAt,
     endedAt: args.endedAt,
@@ -147,7 +148,8 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     sessionCostUsd: rawCost,
     costScope: semantics.cost,
     ...(semantics.tokens === "request" ? { requests: observations.map(({ cost, ...tokens }) => tokens) } : {}),
-    modelCalls: observations.length,
+    // For session/unknown scope, snapshots may not correspond 1:1 with model calls.
+    modelCalls: scope === 'turn' ? observations.length : null,
     quality,
     source,
   };

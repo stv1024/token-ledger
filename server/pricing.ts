@@ -245,6 +245,8 @@ export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
     : estimated.costBreakdown;
   return {
     ...record, input, seq, tokenScope: scope,
+    // Historical session/unknown rows counted snapshots, not model calls.
+    modelCalls: scope === 'turn' ? record.modelCalls : null,
     promptTokens: promptTokens(record.provider, record),
     incompleteUsage: scope !== 'turn' || record.quality !== 'exact' || !!record.usageGap
       || input === null || record.cached === null || record.cacheWrite == null || record.output === null,

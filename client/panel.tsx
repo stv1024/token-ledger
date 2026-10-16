@@ -84,7 +84,7 @@ function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: numbe
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
           {tokens}
           {pct ? ` (${pct} cached)` : ' (cache rate unknown)'}
-          {inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} observation${inFlight.modelCalls > 1 ? 's' : ''}` : ''}
+          {inFlight.modelCalls != null && inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} observation${inFlight.modelCalls > 1 ? 's' : ''}` : ''}
         </Text>
       ) : (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontStyle: "italic" }}>

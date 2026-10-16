@@ -1,7 +1,7 @@
 ﻿import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PaseoAgentStream } from '@getpaseo/client';
-import { AgentStateSchema, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn } from './turns.ts';
+import { AgentStateSchema, closeTurn, createState, endLifecycleTurn, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn } from './turns.ts';
 const start = '2026-09-14T00:00:00.000Z';
 const end = '2026-09-14T00:00:01.000Z';
 const usage = { inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 };
@@ -168,23 +168,111 @@ test('a Codex delivery gap does not mark every subsequent uninterrupted turn as 
   assert.equal(next.usageGap, undefined);
 });
 
-test('late OMP usage refreshes the persisted snapshot without reopening or billing a closed turn', () => {
+test('late OMP usage settles a deferred turn once, then only refreshes the snapshot', () => {
   const state = createState();
   const activeTurn = { turnId: 't1', startedAt: start };
   noteUsage(state, { id: 'a', provider: 'omp', model: 'gpt-model', activeTurn,
     runtimeInfo: { sessionId: 's' }, lastUsage: { inputTokens: 1000, cachedInputTokens: 4000, outputTokens: 100 } });
-  const record = streamTurn(state, event({ type: 'turn_completed', provider: 'omp', turnId: 't1' }))!;
+  assert.equal(streamTurn(state, event({ type: 'turn_completed', provider: 'omp', turnId: 't1' })), null);
+  // OMP publishes the drain while its activeTurnId still names the ending turn.
+  const record = noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
+    lastUsage: { inputTokens: 1300, cachedInputTokens: 4500, outputTokens: 200 } })!;
   assert.equal(record.tokenScope, 'session');
-  noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
-    lastUsage: { inputTokens: 1300, cachedInputTokens: 4500, outputTokens: 200 } });
+  assert.equal(record.input, 1300);
+  assert.equal(record.status, 'completed');
+  assert.equal(record.endedAt, end);
   assert.equal(state.open, null);
+  noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
+    lastUsage: { inputTokens: 1400, cachedInputTokens: 4600, outputTokens: 210 } });
+  assert.equal(state.open, null, 'a replayed activeTurn does not reopen the settled turn');
   const restored = AgentStateSchema.parse(JSON.parse(JSON.stringify(state)));
-  assert.equal(restored.lastObservation?.input, 1300);
-  assert.equal(restored.lastObservation?.output, 200);
+  assert.equal(restored.lastObservation?.input, 1400);
+  assert.equal(restored.lastObservation?.output, 210);
   // A lower branch-view snapshot is not a fresh billing counter or a turn delta.
   noteUsage(restored, { id: 'a', provider: 'omp', activeTurn: null,
     lastUsage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 10 } });
   assert.equal(restored.lastObservation?.input, 100);
   assert.equal(restored.open, null);
   assert.equal(record.costUsd, null);
+});
+
+const omp = (type: 'turn_started' | 'turn_completed', turnId: string, timestamp = type === 'turn_started' ? start : end) =>
+  event({ type, provider: 'omp', turnId }, timestamp);
+
+// Issue sample A (turn 83010c14): the second call's usage arrived 17ms after the terminal event.
+test('OMP sample A: a final snapshot after the terminal event is not dropped', () => {
+  const state = createState();
+  const activeTurn = { turnId: 't1', startedAt: start };
+  streamTurn(state, omp('turn_started', 't1'));
+  noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
+    lastUsage: { inputTokens: 2078, cachedInputTokens: 9984, outputTokens: 484, totalCostUsd: 0.00943752 } });
+  assert.equal(streamTurn(state, omp('turn_completed', 't1')), null);
+  const record = noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
+    lastUsage: { inputTokens: 2751, cachedInputTokens: 22016, outputTokens: 1103, totalCostUsd: 0.01553148 } })!;
+  assert.equal(record.input, 2751); assert.equal(record.cached, 22016); assert.equal(record.output, 1103);
+  assert.equal(record.sessionCostUsd, 0.01553148);
+  assert.equal(record.costUsd, null, 'OMP session cost is not differenced into turns');
+  assert.equal(record.modelCalls, null, 'a snapshot count is not a model-call count');
+});
+
+// Issue sample B (turn afd69f4c): the only call's usage arrived 9ms after the terminal event.
+test('OMP sample B: a turn whose only snapshot drains late is not empty', () => {
+  const state = createState();
+  noteUsage(state, { id: 'a', provider: 'omp', lastUsage: { inputTokens: 2751, cachedInputTokens: 22016, outputTokens: 1103 } });
+  streamTurn(state, omp('turn_started', 't2'));
+  assert.equal(streamTurn(state, omp('turn_completed', 't2')), null);
+  const record = noteUsage(state, { id: 'a', provider: 'omp', activeTurn: { turnId: 't2', startedAt: start },
+    lastUsage: { inputTokens: 3206, cachedInputTokens: 34688, outputTokens: 1410 } })!;
+  assert.equal(record.input, 3206);
+  assert.equal(record.source, 'last_observation');
+  assert.equal(record.modelCalls, null);
+});
+
+test('OMP drain does not absorb a snapshot twice, and a new turn settles an unchanged drain', () => {
+  const state = createState();
+  const s1 = { inputTokens: 100, cachedInputTokens: 0, outputTokens: 10 };
+  streamTurn(state, omp('turn_started', 't1'));
+  streamTurn(state, omp('turn_completed', 't1'));
+  assert.equal(noteUsage(state, { id: 'a', provider: 'omp', activeTurn: { turnId: 't1', startedAt: start }, lastUsage: s1 })!.input, 100);
+  streamTurn(state, omp('turn_started', 't2', end));
+  // A replay of the absorbed snapshot is not new usage for the next turn.
+  assert.equal(noteUsage(state, { id: 'a', provider: 'omp', activeTurn: { turnId: 't2', startedAt: end }, lastUsage: s1 }), null);
+  assert.equal(state.open?.observations.length, 0);
+  // Unchanged usage publishes no drain; the next turn start settles the ending one.
+  streamTurn(state, omp('turn_completed', 't2', '2026-09-14T00:00:02.000Z'));
+  const second = streamTurn(state, omp('turn_started', 't3', '2026-09-14T00:00:03.000Z'))!;
+  assert.equal(second.turnId, 't2');
+  assert.equal(second.status, 'completed', 'a known outcome is not rewritten as canceled');
+  assert.equal(second.endedAt, '2026-09-14T00:00:02.000Z');
+  assert.equal(second.source, 'none');
+  assert.equal(state.open?.turnId, 't3');
+});
+
+test('OMP failures settle at once; Codex still counts its requests', () => {
+  const state = createState();
+  streamTurn(state, omp('turn_started', 't1'));
+  assert.ok(streamTurn(state, event({ type: 'turn_failed', provider: 'omp', turnId: 't1', error: 'x' })));
+  const codex = createState(); streamTurn(codex, begin());
+  noteUsage(codex, { id: 'a', lastUsage: usage });
+  assert.equal(streamTurn(codex, finish())!.modelCalls, 1);
+});
+
+test('a deferred outcome survives a checkpoint and keeps its reported status and time', () => {
+  const state = createState();
+  streamTurn(state, omp('turn_started', 't1'));
+  streamTurn(state, omp('turn_completed', 't1'));
+  const restored = AgentStateSchema.parse(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.open?.ending?.status, 'completed');
+  const record = closeTurn('a', restored, 'canceled', null, '2026-09-14T00:00:09.000Z')!;
+  assert.equal(record.status, 'completed'); assert.equal(record.endedAt, end);
+});
+
+test('the stream outcome overrides an earlier hook outcome', () => {
+  const state = createState();
+  streamTurn(state, omp('turn_started', 't1'));
+  assert.equal(endLifecycleTurn(state, 'other', 'failed', end), false);
+  assert.equal(endLifecycleTurn(state, 't1', 'unknown', '2026-09-14T00:00:00.500Z'), true);
+  streamTurn(state, omp('turn_completed', 't1'));
+  const record = noteUsage(state, { id: 'a', provider: 'omp', activeTurn: { turnId: 't1', startedAt: start }, lastUsage: usage })!;
+  assert.equal(record.status, 'completed'); assert.equal(record.endedAt, end);
 });

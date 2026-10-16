@@ -40,8 +40,11 @@ export const TurnRecordSchema = z.object({
     input: z.number().nullable(), cached: z.number().nullable(), output: z.number().nullable(),
     cacheWrite: z.number().finite().nonnegative().nullable().optional(),
   })).optional(),
-  /** Number of distinct token-bearing usage observations during the turn. */
-  modelCalls: z.number(),
+  /**
+   * Number of distinct token-bearing usage observations during the turn; null for
+   * session/unknown scope where snapshots do not map 1:1 to model calls.
+   */
+  modelCalls: z.number().nullable(),
   quality: z.enum(["exact", "partial", "unavailable"]),
   /** How the token totals were derived: turn_usage | summed_observations | last_observation | none */
   source: z.string(),
@@ -79,7 +82,7 @@ export const InFlightSchema = z.object({
   usageGap: z.boolean().optional(),
   turnId: z.string().nullable(),
   startedAt: z.string(),
-  modelCalls: z.number(),
+  modelCalls: z.number().nullable(),
   tokenScope: z.enum(['turn', 'session', 'unknown']),
   promptTokens: z.number().nullable(),
   partialCost: z.boolean(),

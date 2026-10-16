@@ -1,4 +1,4 @@
-import { closeTurn, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
+import { closeTurn, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn, endLifecycleTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
 import { loadJournal, saveJournal } from "./journal.ts";
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { subscribeAgents } from "../shared/agents.ts";
@@ -76,7 +76,28 @@ function stateFor(agentId: string): AgentState {
   return state;
 }
 export function observeStream(payload: PaseoAgentTimelineEvent): void {
-  if (!stopped) persist(streamTurn(stateFor(payload.agentId), payload));
+  if (stopped) return;
+  const state = stateFor(payload.agentId);
+  persist(streamTurn(state, payload));
+  if (state.open?.ending) scheduleSettle(payload.agentId, state);
+}
+// OMP publishes its final usage only when it changed, so a missing drain
+// snapshot is normal. The bound covers its async stats read, not its 3s poll.
+const SESSION_DRAIN_MS = 2000;
+const STREAM_SETTLE_MS = 250;
+function scheduleSettle(agentId: string, state: AgentState): void {
+  const open = state.open;
+  if (!open?.ending) return;
+  const key = open.key;
+  if (terminalTimers.has(key)) return;
+  const session = tokenScope({ provider: open.provider ?? state.provider }) === 'session';
+  // The stream carries terminal usage; the hook independently carries outcome.
+  // Give the usage a brief chance to settle, then finalize observed facts only.
+  const settle = () => {
+    terminalTimers.delete(key);
+    if (state.open?.key === key) persist(closeTurn(agentId, state, state.open.ending?.status ?? 'unknown', null, new Date().toISOString()));
+  };
+  terminalTimers.set(key, { timer: setTimeout(settle, session ? SESSION_DRAIN_MS : STREAM_SETTLE_MS), settle });
 }
 export async function observeStart(event: PluginLifecycleEvents["agent.turn_started"], paseo: PaseoApi): Promise<void> {
   await ensureTracker(paseo);
@@ -90,17 +111,9 @@ export async function observeEnd(event: PluginLifecycleEvents["agent.turn_ended"
   await ensureTracker(paseo);
   if (stopped) return;
   const state = stateFor(event.agent.id);
-  if (!state.open || state.open.turnId !== event.turnId) return;
-  const key = state.open.key;
-  const endedAt = new Date().toISOString();
-  clearTimeout(terminalTimers.get(key)?.timer);
-  // The stream carries terminal usage; the hook independently carries outcome.
-  // Give the stream a brief chance to settle, then finalize observed facts only.
-  const settle = () => {
-    terminalTimers.delete(key);
-    if (state.open?.key === key) persist(closeTurn(event.agent.id, state, event.outcome.kind, null, endedAt));
-  };
-  terminalTimers.set(key, { timer: setTimeout(settle, 250), settle });
+  if (!endLifecycleTurn(state, event.turnId, event.outcome.kind, new Date().toISOString())) return;
+  checkpoint();
+  scheduleSettle(event.agent.id, state);
 }
 function retireAgent(id: string, gap = false): void {
   needsReconcile.delete(id);
