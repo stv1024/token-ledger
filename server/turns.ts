@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PaseoAgentTimelineEvent } from "./paseo-types.ts";
 import { finalizeTurn, mergeObservation, sameTokens, tokenObservation, type UsageLike } from "../shared/aggregate.ts";
 import type { TurnRecord } from "../shared/ledger.ts";
+import { tokenScope } from '../shared/semantics.ts';
 
 const nullableCount = z.number().finite().nonnegative().nullable();
 const observationSchema = z.object({ input: nullableCount, cached: nullableCount, cacheWrite: nullableCount.optional(), output: nullableCount, cost: nullableCount });
@@ -16,6 +17,7 @@ export const AgentStateSchema = z.object({
   }).nullable(),
   prevSessionCostUsd: nullableCount, lastObservation: observationSchema.nullable(),
   costBaselineUncertain: z.boolean().optional(),
+  lastObservedAt: z.string().nullable().optional(),
   usageGapPending: z.boolean().optional(),
   lastCtx: z.object({ used: z.number(), max: z.number() }).nullable(),
   lastClosedTurnId: z.string().nullable(), lastClosedAt: z.string().nullable(),
@@ -75,6 +77,7 @@ function sessionChanged(agentId: string, state: AgentState, sessionId: string | 
     state.costBaselineUncertain = false;
     state.usageGapPending = false;
     state.lastObservation = null;
+    state.lastObservedAt = null;
     state.lastClosedTurnId = null;
     state.lastClosedAt = null;
   }
@@ -92,20 +95,25 @@ export function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): TurnR
     state.open.provider ??= state.provider;
     state.open.model ??= state.model;
   }
+  const active = snapshot.activeTurn;
+  if (active && state.open && active.turnId !== state.open.turnId) return interrupted;
+  const closedReplay = active && active.turnId === state.lastClosedTurnId && active.turnId !== state.open?.turnId
+    && (!active.startedAt || !state.lastClosedAt || Date.parse(active.startedAt) <= Date.parse(state.lastClosedAt));
+  if (closedReplay && tokenScope(state) === 'turn') return interrupted;
+  const observation = tokenObservation(snapshot.lastUsage);
+  const isNew = observation !== null && (state.lastObservation === null || !sameTokens(state.lastObservation, observation));
+  if (observation) {
+    state.lastObservation = state.lastObservation && !isNew
+      ? mergeObservation(state.lastObservation, observation) : observation;
+    state.lastObservedAt = new Date().toISOString();
+  }
   const usage = snapshot.lastUsage;
   if (usage && Number.isFinite(usage.contextWindowUsedTokens) && Number.isFinite(usage.contextWindowMaxTokens)) {
     state.lastCtx = { used: usage.contextWindowUsedTokens!, max: usage.contextWindowMaxTokens! };
   }
-  const active = snapshot.activeTurn;
-  if (active && active.turnId === state.lastClosedTurnId && active.turnId !== state.open?.turnId) {
-    if (!active.startedAt || !state.lastClosedAt || Date.parse(active.startedAt) <= Date.parse(state.lastClosedAt)) return interrupted;
-    state.lastClosedTurnId = null; // verified newer occurrence of a reused ID
-  }
-  if (active && state.open && active.turnId !== state.open.turnId) return interrupted;
-  const observation = tokenObservation(usage);
-  const isNew = observation !== null && (state.lastObservation === null || !sameTokens(state.lastObservation, observation));
-  if (observation) state.lastObservation = state.lastObservation && !isNew
-    ? mergeObservation(state.lastObservation, observation) : observation;
+  // Cumulative/unknown late observations remain visible as snapshots only.
+  if (closedReplay) return interrupted;
+  if (active?.turnId === state.lastClosedTurnId) state.lastClosedTurnId = null;
   if (!state.open && !active) {
     state.usageGapPending = false;
     if (typeof usage?.totalCostUsd === "number" && Number.isFinite(usage.totalCostUsd) && usage.totalCostUsd >= 0) {

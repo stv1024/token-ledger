@@ -104,13 +104,13 @@ test("cumulative session cost produces a per-turn delta", () => {
   assert.equal(record.sessionCostUsd, 0.08);
 });
 
-test("cost lower than previous raw is treated as a reset, raw kept", () => {
+test("a lower cumulative cost is not a verified session reset", () => {
   const record = finalizeTurn({
     ...base,
     finalUsage: { inputTokens: 10, outputTokens: 10, totalCostUsd: 0.02 },
     prevSessionCostUsd: 0.05,
   });
-  assert.equal(record.costUsd, 0.02);
+  assert.equal(record.costUsd, null);
   assert.equal(record.sessionCostUsd, 0.02);
 });
 
@@ -164,4 +164,14 @@ test('Codex includes an unseen terminal request and retains raw per-request coun
   });
   assert.equal(record.input, 220); assert.equal(record.requests?.length, 2);
   assert.equal(record.quality, 'partial');
+});
+
+test('partial request fields do not produce falsely complete component totals', () => {
+  const record = finalizeTurn({ ...base, provider: 'codex', observations: [
+    { input: 100, cached: 80, cacheWrite: 10, output: 20, cost: null },
+    { input: 120, cached: 90, output: null, cost: null },
+  ] });
+  assert.equal(record.input, 220);
+  assert.ok(record.cacheWrite == null);
+  assert.equal(record.output, null);
 });

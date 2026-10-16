@@ -2,7 +2,9 @@ TokenLedger records the tokens and cost of each agent turn and keeps the history
 
 The agent panel shows session totals, the turn in progress with its context window, and one row per finished turn with status, time, duration, input, cache and output tokens, cost, and a data quality mark. The pill shows the session cost and context use, with an activity icon while a turn runs, and opens the panel. The sidebar row opens the overview, which groups agents by workspace and filters to today, the last 7 days, the last 30 days, or all time. Day ranges start at local midnight on the device that shows them. After each finished turn, the plugin can add one short usage summary to the timeline.
 
-Token counts come from the provider and are never invented. Claude reports a total for each turn, which is marked exact. Codex reports each model request, so the plugin adds the requests and marks the total as approximate. Other providers show the latest report, marked partial. When the provider reports a cost, that cost is shown. Otherwise the plugin estimates the cost, marked with ≈, from your prices in `pricing.json`, then OpenRouter reference prices, then a small built-in price table.
+Token counts come from the provider. Claude terminal aggregates and observed Codex requests contribute to turn subtotals. OMP current-session/branch totals and unverified-harness observations remain visible as snapshots but are excluded from turn sums and prices. A separate latest-snapshot card retains late updates without inventing turn attribution. Missing counts/rates display as unknown; cache hit rates require a complete prompt denominator. Partial estimates and unknown-cost turns are explicit in the panel, pill and overview. Runtime-reported costs take priority over your reference prices, OpenRouter references and built-in prices, but are not verified bills.
+
+The pill distinguishes known session snapshots (`Session ≈4.12M tok`), unknown-scope snapshots, waiting for usage and no reported usage. Old timeline cards without scope metadata are labelled as legacy; their ledger inclusion is not guessed from the card.
 
 The plugin settings page on each host has four options:
 
@@ -11,11 +13,14 @@ The plugin settings page on each host has four options:
 - **Built-in fallback prices** controls estimates when no custom or OpenRouter price matches a model.
 - **Refresh frequency** selects normal or relaxed polling. Live updates still refresh the views immediately.
 
-The ledger is a JSON Lines file in the plugin data folder on the daemon host, `~/.paseo/plugins/token-ledger/` (or the same path under `PASEO_HOME`). It keeps the last 2,000 turns. Each record holds timestamps, agent ID, provider, model, token counts, cost, status, duration, and quality. Prompts, responses, tool arguments, file paths, and credentials are not recorded. A `pricing.json` file in the same folder holds your own prices per million tokens. History does not sync between hosts.
+The ledger is a JSON Lines file on the daemon host, `~/.paseo/plugins/token-ledger/` (or under `PASEO_HOME`), retaining 2,000 records. It stores observed usage, timestamps, identity, scope and quality, not prompts, responses, tool arguments or credentials. Older records remain readable and are reinterpreted without rewriting them. `pricing.json` starts empty and preserves your existing prices. Full model IDs and explicit aliases prevent unrelated routes from sharing a guessed price. History does not sync between hosts.
+
+Standard Claude numeric-version spellings such as `5.5` and `5-5` retain custom-price compatibility. Other old lossy matches or ambiguous entries show a pricing configuration warning and block reference-price fallback until an explicit alias/provider scope is reviewed. Existing files are not rewritten, and valid edits clear the warning automatically.
 
 Known limits:
 
-- Paseo does not report cache write tokens, so Claude cache writes are missing from the token columns. The reported cost stays correct, and the difference shows as a residual under the cost.
-- Paseo does not report the usage of subagents that run inside a provider, so totals can be lower than the provider bill.
-- Usage during a time when the plugin or daemon is offline cannot be recovered. Affected turns are marked as a gap or as unknown.
-- Estimated costs use reference prices and can differ from your actual contract.
+- Missing cache writes are not zero; setting prices cannot recover omitted token counts. A reported-cost residual does not prove a cache-write charge.
+- Child coverage differs by harness. Codex child usage can be omitted; OMP already includes some child usage. Blindly adding children can double-count.
+- Session snapshots cannot safely become per-turn deltas without branch epochs and final usage attribution; they are not included in date-range totals.
+- Offline observations and missing request identities cannot be reconstructed. Affected usage stays incomplete or unknown.
+- Runtime and reference prices can differ from actual contracts. No private gateway rate table or fixed exchange rate is built in.

@@ -10,8 +10,11 @@ export function UsageTimelineRow({ item, theme }: PluginTimelineItemProps<UsageT
   const tokens = tokensLine(row.input, row.cached, row.output, row.cacheWrite);
   const details = [row.status === 'completed' ? null : row.status,
     row.usageGap ? 'usage gap' : null,
+    row.tokenScope === undefined ? 'legacy scope metadata unavailable'
+      : row.tokenScope !== 'turn' ? `${row.tokenScope} snapshot · excluded from totals` : null,
+    row.incompleteUsage ? 'incomplete usage' : null,
     tokens ? `${row.quality === 'partial' ? '≈ ' : ''}${tokens}` : 'usage unavailable',
-    cost ? `${row.costSource !== 'reported' ? '≈' : ''}${cost}` : null,
+    cost ? `${row.costSource !== 'reported' ? '≈' : ''}${cost}${row.partialCost ? ' partial' : ''}${row.costSource === 'reported' ? ' runtime-reported' : ''}` : null,
     row.durationMs === null ? null : fmtDuration(row.durationMs),
   ].filter(Boolean).join(' · ');
   return (

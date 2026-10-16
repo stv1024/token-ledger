@@ -58,7 +58,7 @@ function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
 function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: number; theme: PluginTheme }) {
   const elapsed = useElapsed(inFlight.startedAt);
   const tokens = tokensLine(inFlight.input, inFlight.cached, inFlight.output, inFlight.cacheWrite);
-  const pct = fmtPct(cacheRatio(inFlight.input, inFlight.cached, inFlight.cacheWrite));
+  const pct = fmtPct(cacheRatio(inFlight.cached, inFlight.promptTokens));
   const ctx = inFlight.ctxUsed !== null && inFlight.ctxMax !== null ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : null;
   return (
     <View
@@ -83,19 +83,23 @@ function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: numbe
       {tokens ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
           {tokens}
-          {pct ? ` (${pct} cached)` : ""}
-          {inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} call${inFlight.modelCalls > 1 ? "s" : ""}` : ""}
+          {pct ? ` (${pct} cached)` : ' (cache rate unknown)'}
+          {inFlight.modelCalls > 0 ? ` · ${inFlight.modelCalls} observation${inFlight.modelCalls > 1 ? 's' : ''}` : ''}
         </Text>
       ) : (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontStyle: "italic" }}>
           tokens & cost reported at turn end
         </Text>
       )}
+      {inFlight.tokenScope !== 'turn' ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+        {inFlight.tokenScope} snapshot, not current-turn usage. Excluded from totals.
+      </Text> : null}
       {inFlight.effectiveCostUsd !== null ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-          ≈{fmtCost(inFlight.effectiveCostUsd)} current turn
+          {inFlight.costSource === 'reported' ? '' : '≈'}{fmtCost(inFlight.effectiveCostUsd)} {inFlight.partialCost ? 'partial estimate' : 'current turn'}
         </Text>
       ) : null}
+      {inFlight.pricingWarning ? <Text style={{ color: theme.colors.statusWarning, fontSize: 11 }}>{inFlight.pricingWarning}</Text> : null}
       {ctx ? <CtxBar ctx={ctx} theme={theme} /> : null}
       {inFlight.usageGap ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>Connection interrupted · usage may be incomplete.</Text> : null}
     </View>
@@ -115,9 +119,9 @@ function TurnCell({
   theme: PluginTheme;
 }) {
   return (
-    <View style={{ ...width, alignItems: "flex-end" }}>
+    <View style={{ width: width.minWidth, alignItems: "flex-end" }}>
       <Text style={{ color: theme.colors.foreground, fontSize: 12, fontVariant: ["tabular-nums"] }}>{top}</Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
+      <Text style={{ maxWidth: width.minWidth, textAlign: 'right', color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
         {bottom}
       </Text>
     </View>
@@ -128,16 +132,16 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
   const cols = turnColumns(dense);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null || record.cacheWrite != null;
   const split = record.costBreakdown;
-  const pct = fmtPct(cacheRatio(record.input, record.cached, record.cacheWrite));
+  const pct = fmtPct(cacheRatio(record.cached, record.promptTokens));
   const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
-  const costDetail =
+  const costDetail = record.pricingWarning ? 'price config' :
     record.costSource === "override"
       ? "override"
       : record.costSource === "openrouter"
         ? "OR ref"
         : record.costSource === "builtin"
           ? "list"
-          : fmtResidual(split?.otherUsd ?? null);
+          : record.tokenScope !== 'turn' ? 'not turn' : `runtime ${fmtResidual(split?.otherUsd ?? null).trim()}`;
   const seqWidth = dense ? 20 : 24;
   return (
     <View
@@ -163,7 +167,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
           </Text>
         </View>
         <Text
-          numberOfLines={1}
+          numberOfLines={2}
           style={{
             color: theme.colors.foregroundMuted,
             fontSize: 10,
@@ -173,7 +177,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
           }}
         >
           {fmtDuration(record.durationMs)}
-            {record.usageGap ? ' · gap' : record.quality === "partial" ? " ≈" : ""}
+            {record.tokenScope !== 'turn' ? ` · ${record.tokenScope} snapshot` : record.usageGap ? ' · gap' : record.incompleteUsage ? ' · incomplete' : ''}
         </Text>
       </View>
       {hasUsage ? (
@@ -187,14 +191,12 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
           <View style={{ gap: 3 }}>
             <TurnCell
               top={fmtTokens(record.cached)}
-              bottom={pct ? `${cacheCost}·${pct}` : cacheCost}
+              bottom={pct ? `${cacheCost}·${pct}` : `${cacheCost}·?`}
               width={cols.cache}
               theme={theme}
             />
-            {record.cacheWrite != null ? (
-              <TurnCell top={`${fmtTokens(record.cacheWrite)} write`}
-                bottom={split ? fmtCostSmall(split.cacheWriteUsd ?? 0) : '–'} width={cols.cache} theme={theme} />
-            ) : null}
+            <TurnCell top={`${fmtTokens(record.cacheWrite ?? null)} write`}
+              bottom={fmtCostSmall(split?.cacheWriteUsd ?? null)} width={cols.cache} theme={theme} />
           </View>
           <TurnCell
             top={fmtTokens(record.output)}
@@ -218,7 +220,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
       )}
       <TurnCell
         top={`${record.costSource && record.costSource !== "reported" ? "≈" : ""}${fmtCost(record.effectiveCostUsd) ?? "–"}`}
-        bottom={costDetail}
+        bottom={`${costDetail}${record.partialCost && record.effectiveCostUsd !== null ? ' partial' : ''}`}
         width={cols.cost}
         theme={theme}
       />
@@ -229,6 +231,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
 export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
   const { dense, setWidth } = useDenseLayout(layout.compact);
   const { data, error } = useLedger(agentId);
+  const pricingWarnings = [...new Set(data?.records.flatMap((record) => record.pricingWarning ? [record.pricingWarning] : []) ?? [])];
   // Make the panel↔agent binding visible: which session is this ledger for?
   const agentLabel = useAgent(agentId, (agent) => {
     const name = agent.title ?? agentId.slice(0, 8);
@@ -269,8 +272,24 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
             </View>
             <SummaryRow summary={data.summary} theme={theme} dense={dense} />
             <UsageCoverageNote theme={theme} />
+            {pricingWarnings.map((warning) => <Text key={warning} style={{ color: theme.colors.statusWarning, fontSize: 11 }}>{warning}</Text>)}
             {!data.inFlight && data.ctx ? <CtxBar ctx={data.ctx} theme={theme} /> : null}
           </View>
+          {data.usageSnapshot ? <View style={{ gap: 6, padding: 12, backgroundColor: theme.colors.surface1, borderRadius: 10 }}>
+            <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              Latest {data.usageSnapshot.scope === 'session' ? 'session / branch' : 'unknown-scope'} snapshot
+            </Text>
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+              {tokensLine(data.usageSnapshot.input, data.usageSnapshot.cached, data.usageSnapshot.output, data.usageSnapshot.cacheWrite)}
+            </Text>
+            {data.usageSnapshot.reportedCostUsd !== null ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+              Runtime-reported cost: {fmtCost(data.usageSnapshot.reportedCostUsd)} · not a verified bill
+            </Text> : null}
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+              Not per-turn usage; excluded from totals. Late updates refresh this snapshot, not closed turns.
+              {data.usageSnapshot.observedAt ? ` Observed ${fmtTime(data.usageSnapshot.observedAt)}.` : ''}
+            </Text>
+          </View> : null}
           {data.inFlight ? <InFlightCard inFlight={data.inFlight} seq={data.summary.turns + 1} theme={theme} /> : null}
           <View style={{ gap: 2 }}>
             <TurnTableHeader theme={theme} dense={dense} />
@@ -286,10 +305,13 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                   // restarts (turnId reuse), which made React render ghost rows.
                   <RecordRow key={record.seq} record={record} theme={theme} dense={dense} />
                 ))}
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
+                  IN is uncached input; it may include unclassified writes. “?” means the cache-rate denominator is unknown.
+                  Session/unknown snapshots are observations at settlement, not final turn totals.
+                </Text>
                 {data.records.some((record) => fmtResidual(record.costBreakdown?.otherUsd ?? null).trim() !== "") ? (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
-                    ± under COST: difference between reported cost and the token-based estimate, including charges
-                    for usage Paseo does not expose.
+                    ± under COST: runtime-reported cost minus known component estimates. A residual does not identify missing tokens or actual charges.
                   </Text>
                 ) : null}
                 {data.records.some((record) => record.costSource && record.costSource !== "reported") ? (

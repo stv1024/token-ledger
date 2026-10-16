@@ -1,4 +1,4 @@
-import { providerSemantics } from "./semantics.ts";
+import { providerSemantics, tokenScope } from "./semantics.ts";
 import type { TurnRecord } from "./ledger.ts";
 
 /** Reducer input. Paseo 0.8 exposes these fields except cacheWriteInputTokens. */
@@ -54,7 +54,8 @@ function sumField(observations: Observation[], field: "input" | "cached" | "cach
   let total: number | null = null;
   for (const observation of observations) {
     const value = observation[field];
-    if (value != null) total = (total ?? 0) + value;
+    if (value == null) return null;
+    total = (total ?? 0) + value;
   }
   return total;
 }
@@ -115,8 +116,10 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
 
   const rawCost = num(args.finalUsage?.totalCostUsd) ?? observations.at(-1)?.cost ?? null;
   let costUsd: number | null = semantics.cost === "session" ? rawCost : null;
-  if (semantics.cost === "session" && rawCost !== null && args.prevSessionCostUsd !== null && rawCost >= args.prevSessionCostUsd) {
-    costUsd = Number((rawCost - args.prevSessionCostUsd).toFixed(6));
+  if (semantics.cost === "session" && rawCost !== null && args.prevSessionCostUsd !== null) {
+    // Only a verified session change resets the baseline; a drop is not proof.
+    costUsd = rawCost >= args.prevSessionCostUsd
+      ? Number((rawCost - args.prevSessionCostUsd).toFixed(6)) : null;
   }
 
   const durationMs =
@@ -130,6 +133,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     agentId: args.agentId,
     turnId: args.turnId,
     provider: args.provider,
+    tokenScope: tokenScope(args),
     model: args.model,
     startedAt: args.startedAt,
     endedAt: args.endedAt,

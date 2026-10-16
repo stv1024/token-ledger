@@ -14,11 +14,17 @@ export function fmtCost(value: number | null): string | null {
   return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
 }
 
-/** Cost when priced, else total tokens. "≈" marks a cost that includes estimates. */
+/** Compact totals always disclose omitted costs or incomplete token coverage. */
 export function costOrTokens(summary: Summary): string {
   const cost = fmtCost(summary.effectiveCostUsd);
-  if (cost) return `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}`;
-  return `${fmtTokens(summary.input + summary.cached + (summary.cacheWrite ?? 0) + summary.output)} tok`;
+  const unknown = summary.pricingWarningTurns > 0 ? ' · price config'
+    : summary.unpricedTurns > 0 ? ` · ${summary.unpricedTurns} unknown` : '';
+  if (cost) return `${summary.estimatedTurns > 0 ? '≈' : ''}${cost}${summary.partialCostTurns > 0 ? ' partial' : ''}${unknown}`;
+  if (summary.input === null && summary.cached === null && summary.output === null && summary.cacheWrite == null) {
+    return summary.unmeasuredTurns > 0 ? `turn usage unavailable${unknown}` : `no usage reported${unknown}`;
+  }
+  const total = (summary.input ?? 0) + (summary.cached ?? 0) + (summary.cacheWrite ?? 0) + (summary.output ?? 0);
+  return `${fmtTokens(total)} tok${summary.incompleteTurns > 0 ? ' partial' : ''}${unknown}`;
 }
 
 /** Compact cost for per-component cells; "–" when unknown. */
@@ -29,12 +35,7 @@ export function fmtCostSmall(value: number | null): string {
   return `$${value.toPrecision(1)}`;
 }
 
-/**
- * Signed cost residual (reported total minus list-price component estimate)
- * for the COST cell; blank when unknown or negligible. On Claude turns a
- * positive residual is mostly cache writes, which upstream never reports as
- * tokens.
- */
+/** Reported runtime cost minus known component estimates, not missing-token attribution. */
 export function fmtResidual(value: number | null): string {
   if (value === null || Math.abs(value) < 0.005) return " ";
   return `${value > 0 ? "+" : "−"}${fmtCostSmall(Math.abs(value))}`;
@@ -72,7 +73,7 @@ export function statusColor(status: TurnRecord["status"], theme: PluginTheme): s
 
 export function tokensLine(input: number | null, cached: number | null, output: number | null, cacheWrite?: number | null): string | null {
   if (input === null && cached === null && output === null && cacheWrite == null) return null;
-  return `in ${fmtTokens(input)} · cache ${fmtTokens(cached)}${cacheWrite != null ? ` · write ${fmtTokens(cacheWrite)}` : ''} · out ${fmtTokens(output)}`;
+  return `in ${fmtTokens(input)} · cache ${fmtTokens(cached)} · write ${fmtTokens(cacheWrite ?? null)} · out ${fmtTokens(output)}`;
 }
 
 /** Column widths for the TURNS table; shared by the header and data rows. */
@@ -120,16 +121,25 @@ export function Stat({ label, value, theme, dense }: { label: string; value: str
 
 export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme: PluginTheme; dense?: boolean }) {
   const cost = fmtCost(summary.effectiveCostUsd);
-  const costValue = cost ? `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}` : null;
-  const costLabel = summary.unpricedTurns > 0 ? `cost · ${summary.unpricedTurns} unknown` : summary.estimatedTurns > 0 ? "cost · estimated" : "cost";
+  const costValue = cost ? `${summary.estimatedTurns > 0 ? '≈' : ''}${cost}` : 'unknown';
+  const costLabel = ['known cost', summary.partialCostTurns > 0 ? `${summary.partialCostTurns} partial` : null,
+    summary.unpricedTurns > 0 ? `${summary.unpricedTurns} unknown` : null].filter(Boolean).join(' · ');
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: dense ? 10 : 16 }}>
-      <Stat label="turns" value={String(summary.turns)} theme={theme} dense={dense} />
-      <Stat label="input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
-      <Stat label="cache" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
-      {summary.cacheWrite != null ? <Stat label="cache write" value={fmtTokens(summary.cacheWrite)} theme={theme} dense={dense} /> : null}
-      <Stat label="output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
-      {costValue ? <Stat label={costLabel} value={costValue} theme={theme} dense={dense} /> : null}
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: dense ? 10 : 16 }}>
+        <Stat label="turns" value={String(summary.turns)} theme={theme} dense={dense} />
+        <Stat label="known input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
+        <Stat label="cache read" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
+        <Stat label="cache write" value={fmtTokens(summary.cacheWrite ?? null)} theme={theme} dense={dense} />
+        <Stat label="known output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
+        <Stat label={costLabel} value={costValue} theme={theme} dense={dense} />
+      </View>
+      {summary.incompleteTurns > 0 ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+        {summary.incompleteTurns} turn(s) with incomplete usage{summary.unmeasuredTurns > 0 ? ` · ${summary.unmeasuredTurns} snapshot(s) excluded from totals` : ''}.
+      </Text> : null}
+      {summary.pricingWarningTurns > 0 ? <Text style={{ color: theme.colors.statusWarning, fontSize: 11 }}>
+        {summary.pricingWarningTurns} turn(s) need pricing.json review. Reference-price fallback is blocked for ambiguous or unsafe old matches.
+      </Text> : null}
     </View>
   );
 }
@@ -137,7 +147,7 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
 export function UsageCoverageNote({ theme }: { theme: PluginTheme }) {
   return (
     <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-      Totals reflect usage available from Paseo; subagent usage and cache writes may be missing.
+      Known usage only. “–” means unknown, not zero. Runtime-reported and reference costs are not verified bills; descendant usage may be missing.
     </Text>
   );
 }

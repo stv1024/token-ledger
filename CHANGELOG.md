@@ -3,6 +3,16 @@
 ## Unreleased
 
 - Add an overview screenshot (demo data, with the sidebar footer row) to the README and as the first manifest media image.
+- Fix harness input semantics: OMP exclusive input is no longer reduced again by a GPT-model fallback; unverified providers are never inferred from model names.
+- Separate per-turn usage from OMP current-session/branch totals and unknown-scope snapshots, including historical v1 records. Snapshots remain visible but are excluded from turn/date-range sums and estimates. Late idle usage updates refresh a separate latest-snapshot card, not an invented turn delta.
+- Preserve unknown counts and cache rates rather than displaying zero. Only show a cache hit rate with a complete prompt denominator; keep partial request fields incomplete.
+- Disclose incomplete usage, partial reference estimates and unknown-cost turns in the panel, pill, sidebar and overview. Runtime-reported amounts are not verified bills. Keep cost cells within narrow panel widths.
+- Remove private gateway seed prices and fixed currency conversion. Start new price files empty without rewriting existing custom files. Match full model identities and explicit aliases; provider scopes no longer match model text, and ambiguous overrides are unpriced.
+- Do not guess cache-read/write rates from ordinary-input rates, select tiers with an unknown prompt size, or interpret a falling session-cost counter as proof of a new session.
+- Follow up upstream with public synthetic evidence for cache writes, request/branch/descendant attribution and OMP final-drain ordering; see [usage API requirements](docs/paseo-usage-api.md). Missing upstream data is not restored by this change.
+- Preserve standard Claude dotted/hyphenated numeric-version aliases for custom prices. Block reference-price fallback and surface a pricing.json migration warning for ambiguous entries or matches that previously depended on unsafe namespace/context/provider folding; valid explicit aliases clear it without rewriting the file.
+- Distinguish session token snapshots, unknown-scope snapshots, waiting for usage and no reported usage in the composer pill. Live per-turn token observations remain visible even without a price.
+- Label old Timeline cards as missing scope metadata rather than falsely claiming they were excluded from ledger totals. Refresh the support matrix and screenshots with isolated synthetic data.
 
 ## v0.7.0 (2026-10-09) — Paseo 0.11 screens and sidebar
 

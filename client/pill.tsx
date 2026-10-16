@@ -5,23 +5,47 @@ import { useLedger } from "./data.ts";
 import { useEffect } from "react";
 import { subscribeAgents } from "../shared/agents.ts";
 import { ledgerEnsure, type SyncResult } from "../shared/ledger.ts";
-import { fmtCost, fmtTokens } from "./ui.tsx";
+import { costOrTokens, fmtTokens } from "./ui.tsx";
 
 import type { PanelPlacement } from "./layout.ts";
 
-function pillLabel({ summary, inFlight, ctx }: SyncResult): string {
-  const combinedCost = summary.effectiveCostUsd === null && inFlight?.effectiveCostUsd == null
-    ? null
-    : (summary.effectiveCostUsd ?? 0) + (inFlight?.effectiveCostUsd ?? 0);
-  const cost = fmtCost(combinedCost);
-  const estimated = summary.estimatedTurns > 0 || inFlight?.effectiveCostUsd != null;
-  const parts = [cost
-    ? `${estimated ? "≈" : ""}${cost}`
-    : `${fmtTokens(summary.input + summary.cached + (summary.cacheWrite ?? 0) + summary.output)} tok`];
+function pillLabel({ summary, inFlight, ctx, usageSnapshot }: SyncResult): string {
+  let label: string;
+  const snapshotHasTokens = usageSnapshot && (usageSnapshot.input !== null || usageSnapshot.cached !== null
+    || usageSnapshot.cacheWrite !== null || usageSnapshot.output !== null);
+  if (usageSnapshot && (snapshotHasTokens || usageSnapshot.reportedCostUsd !== null)) {
+    if (usageSnapshot.scope === 'session' && snapshotHasTokens) {
+      const partial = usageSnapshot.input === null || usageSnapshot.cached === null
+        || usageSnapshot.cacheWrite === null || usageSnapshot.output === null;
+      const total = (usageSnapshot.input ?? 0) + (usageSnapshot.cached ?? 0)
+        + (usageSnapshot.cacheWrite ?? 0) + (usageSnapshot.output ?? 0);
+      label = `Session ${partial ? '≈' : ''}${fmtTokens(total)} tok`;
+    } else label = usageSnapshot.scope === 'session' ? 'Session snapshot' : 'Usage snapshot · scope unknown';
+  } else {
+    const live = inFlight?.tokenScope === 'turn' ? inFlight : null;
+    const liveCost = live?.effectiveCostUsd;
+    const combined = { ...summary,
+      effectiveCostUsd: summary.effectiveCostUsd === null && liveCost == null ? null
+        : (summary.effectiveCostUsd ?? 0) + (liveCost ?? 0),
+      estimatedTurns: summary.estimatedTurns + (liveCost != null && live?.costSource !== 'reported' ? 1 : 0),
+      partialCostTurns: summary.partialCostTurns + (liveCost != null && live?.partialCost ? 1 : 0),
+      unpricedTurns: summary.unpricedTurns + (live && liveCost == null ? 1 : 0),
+      pricingWarningTurns: summary.pricingWarningTurns + (live?.pricingWarning ? 1 : 0),
+      incompleteTurns: summary.incompleteTurns + (live ? 1 : 0),
+    };
+    if (live) for (const field of ['input', 'cached', 'cacheWrite', 'output'] as const) {
+      if (live[field] != null) combined[field] = (combined[field] ?? 0) + live[field];
+    }
+    const hasUsage = combined.effectiveCostUsd !== null || combined.input !== null || combined.cached !== null
+      || combined.cacheWrite != null || combined.output !== null;
+    label = hasUsage || combined.pricingWarningTurns > 0 ? costOrTokens(combined)
+      : inFlight ? 'Waiting for usage' : 'No usage reported';
+  }
+  const parts = [label];
   const liveCtx = inFlight?.ctxUsed != null && inFlight.ctxMax != null
     ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : ctx;
   if (liveCtx && liveCtx.max > 0) parts.push(`ctx ${Math.round(liveCtx.used / liveCtx.max * 100)}%`);
-  return parts.join(" · ");
+  return parts.join(' · ');
 }
 
 export function contributePills(client: PluginClientContext, placement: PanelPlacement): () => Promise<void> {

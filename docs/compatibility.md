@@ -46,6 +46,7 @@ exclude beta builds.
 | 0.10.2 | Installed desktop/daemon, published SDK, typecheck, 65 tests, plugin reload, real Claude/Codex turns on 2026-09-30 | Compatible with v0.6.3 |
 | 0.11.0 | Published SDK (plugin dist identical to 0.11.1), typecheck and 65 tests on 2026-10-09 | Minimum for v0.7.0; no installed host tested |
 | 0.11.1 | Installed desktop/daemon, published SDK, typecheck, 65 tests, dependency-free compile probe, plugin reload, real Claude/Codex turns, manual sidebar and overview check on 2026-10-09 | Supported by v0.7.0 |
+| 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
 
 The 0.11.1 investigation found:
 
@@ -75,3 +76,31 @@ This review checked client types, bundle compilation, and the desktop sidebar
 row and overview ranges by hand; mobile UI was not checked. It does not certify
 other providers or future Paseo releases. Test agents were archived after
 verification.
+
+The 0.11.2 accounting review found two plugin errors: model-based input
+normalization subtracted OMP cache twice, and session/branch snapshots were
+added as turn counts. Historical snapshots are now excluded from turn totals,
+while retaining their raw facts and showing late updates separately. Cache
+hit rates require a complete denominator; costs disclose unknown/partial
+coverage. Existing local prices and JSONL files were not rewritten.
+
+The UI check used the installed app-dist against the running daemon in an
+isolated Chromium, including the narrow ledger panel. Local-network browser
+policy was disabled only for that disposable verification process; document
+assets were served locally at the daemon origin without changing its CORS or
+auth configuration. No mobile device or new paid model probe was used.
+
+A copy without `node_modules` also compiled and reached "Plugin ready" on
+0.11.2 under a disposable plugin ID. Its contributions returned cleanup
+functions without registering tracking/UI; the probe was then removed.
+
+The local-trial follow-up retained 66 passing tests and added upgrade cases
+for dotted/hyphenated Claude custom prices, unsafe legacy-match warnings,
+reported-cost preservation and warning removal after a corrected alias.
+The actual Timeline renderer was also exercised with legacy and scoped data:
+legacy cards no longer assert exclusion. Native Text/View were represented
+as leaf components for that render-branch smoke, not a full Timeline UI run.
+An isolated 0.11.2 daemon with synthetic data verified the overview warning,
+the `Session ≈4.12M tok` pill and its snapshot panel, and supplied the refreshed
+screenshots. No model prompt was sent. The production plugin was reloaded
+for local trial only; no package version was published.

@@ -167,3 +167,24 @@ test('a Codex delivery gap does not mark every subsequent uninterrupted turn as 
   const next = streamTurn(state, finish('t2'))!;
   assert.equal(next.usageGap, undefined);
 });
+
+test('late OMP usage refreshes the persisted snapshot without reopening or billing a closed turn', () => {
+  const state = createState();
+  const activeTurn = { turnId: 't1', startedAt: start };
+  noteUsage(state, { id: 'a', provider: 'omp', model: 'gpt-model', activeTurn,
+    runtimeInfo: { sessionId: 's' }, lastUsage: { inputTokens: 1000, cachedInputTokens: 4000, outputTokens: 100 } });
+  const record = streamTurn(state, event({ type: 'turn_completed', provider: 'omp', turnId: 't1' }))!;
+  assert.equal(record.tokenScope, 'session');
+  noteUsage(state, { id: 'a', provider: 'omp', activeTurn,
+    lastUsage: { inputTokens: 1300, cachedInputTokens: 4500, outputTokens: 200 } });
+  assert.equal(state.open, null);
+  const restored = AgentStateSchema.parse(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.lastObservation?.input, 1300);
+  assert.equal(restored.lastObservation?.output, 200);
+  // A lower branch-view snapshot is not a fresh billing counter or a turn delta.
+  noteUsage(restored, { id: 'a', provider: 'omp', activeTurn: null,
+    lastUsage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 10 } });
+  assert.equal(restored.lastObservation?.input, 100);
+  assert.equal(restored.open, null);
+  assert.equal(record.costUsd, null);
+});

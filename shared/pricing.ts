@@ -1,18 +1,17 @@
 /**
  * Per-model pricing used to estimate a cost breakdown per turn. Upstream only
  * reports a total costUsd, never per-component costs, so the split shown in
- * the UI is an estimate: token counts × list price. When a real total exists,
- * the difference between it and the estimate is surfaced as `otherUsd` rather
- * than smeared across the components. Missing upstream usage (including
- * cache writes in Paseo 0.8) can contribute to that residual.
+ * the UI is an estimate: token counts × reference price. Reported runtime cost
+ * is not proof of an invoice. Its difference from known estimated components
+ * is a residual, not an inferred cache-write charge.
  *
  * Prices are $/MTok. Cache write is independent of the input/read rates;
  * neither cache lifetime nor a provider's write premium is inferred.
  */
 export type ModelPricing = {
   input: number;
-  cacheRead: number;
-  /** Omitted in older price files; writes then use the ordinary input rate. */
+  cacheRead?: number;
+  /** Missing means the write rate is unknown; zero is an explicitly free rate. */
   cacheWrite?: number;
   output: number;
 };
@@ -33,20 +32,16 @@ const PRICING_TABLE: Array<[RegExp, ModelPricing]> = [
 ];
 
 export function canonicalModel(value: string): string {
-  let model = value.trim().toLowerCase();
-  if (model.startsWith('[')) {
-    try {
-      const parsed: unknown = JSON.parse(model);
-      if (Array.isArray(parsed) && typeof parsed.at(-1) === 'string') model = parsed.at(-1);
-    } catch {}
-  }
-  model = model.split('/').at(-1) ?? model;
-  return model.replace(/\[1m\]$/i, '').replace(/[._]/g, '-').replace(/-+/g, '-');
+  const model = value.trim().toLowerCase();
+  // Standard Claude numeric versions use both 4.5 and 4-5 spellings. Preserve
+  // namespaces, context/mode suffixes and arbitrary model identities.
+  return /^(?:anthropic\/)?claude-(?:opus|sonnet|haiku|fable|mythos)-\d+(?:[.-]\d+)*$/.test(model)
+    ? model.replace(/\./g, '-') : model;
 }
 
 export function modelPricing(model: string | null): ModelPricing | null {
   if (!model) return null;
-  const canonical = canonicalModel(model).replace(/-\d{8}$/, '');
+  const canonical = canonicalModel(model).replace(/^anthropic\//, '').replace(/-\d{8}$/, '').replace(/(?<=\d)\.(?=\d)/g, '-');
   for (const [pattern, pricing] of PRICING_TABLE) {
     if (pattern.test(canonical)) return pricing;
   }
@@ -54,15 +49,14 @@ export function modelPricing(model: string | null): ModelPricing | null {
 }
 
 export type CostBreakdown = {
-  inUsd: number;
-  cacheUsd: number;
-  cacheWriteUsd?: number;
-  outUsd: number;
+  inUsd: number | null;
+  cacheUsd: number | null;
+  cacheWriteUsd?: number | null;
+  outUsd: number | null;
   /**
-   * costUsd minus the list-price estimate of the known components; null when
-   * no real total was reported. Positive residual is cost the reported token
-   * counts can't account for (chiefly cache writes on Claude); a small
-   * negative residual just means the hardcoded list prices overestimate.
+   * Reported runtime cost minus the sum of known estimated components.
+   * This includes price/source differences as well as unobserved categories;
+   * it does not establish actual billing or identify missing token counts.
    */
   otherUsd: number | null;
 };
@@ -94,22 +88,33 @@ export function costBreakdownWithPricing(
   pricing: ModelPricing,
 ): CostBreakdown | null {
   if (turn.input === null && turn.cached === null && turn.output === null && turn.cacheWrite == null) return null;
-  const inUsd = ((turn.input ?? 0) * pricing.input) / PER_MTOK;
-  const cacheUsd = ((turn.cached ?? 0) * pricing.cacheRead) / PER_MTOK;
-  const cacheWriteUsd = ((turn.cacheWrite ?? 0) * (pricing.cacheWrite ?? pricing.input)) / PER_MTOK;
-  const outUsd = ((turn.output ?? 0) * pricing.output) / PER_MTOK;
-  const otherUsd = turn.costUsd !== null ? turn.costUsd - (inUsd + cacheUsd + cacheWriteUsd + outUsd) : null;
-  return { inUsd, cacheUsd, ...(turn.cacheWrite != null ? { cacheWriteUsd } : {}), outUsd, otherUsd };
+  const inUsd = turn.input === null ? null : turn.input * pricing.input / PER_MTOK;
+  const cacheUsd = turn.cached === null ? null : turn.cached === 0 ? 0
+    : pricing.cacheRead === undefined ? null : turn.cached * pricing.cacheRead / PER_MTOK;
+  const cacheWriteUsd = turn.cacheWrite == null ? null : turn.cacheWrite === 0 ? 0
+    : pricing.cacheWrite === undefined ? null : turn.cacheWrite * pricing.cacheWrite / PER_MTOK;
+  const outUsd = turn.output === null ? null : turn.output * pricing.output / PER_MTOK;
+  const known = (inUsd ?? 0) + (cacheUsd ?? 0) + (cacheWriteUsd ?? 0) + (outUsd ?? 0);
+  const otherUsd = turn.costUsd !== null ? turn.costUsd - known : null;
+  return { inUsd, cacheUsd, cacheWriteUsd, outUsd, otherUsd };
 }
 
-/**
- * Share of prompt tokens served from cache: cached / (input + cached + writes).
- * Expects input in canonical fresh-token form (see semantics.ts) — the server
- * normalizes inclusive-input providers before values reach clients.
- */
-export function cacheRatio(input: number | null, cached: number | null, cacheWrite?: number | null): number | null {
-  if (cached === null) return null;
-  const prompt = (input ?? 0) + cached + (cacheWrite ?? 0);
-  if (prompt <= 0) return null;
+/** Ratio only when the complete prompt denominator is available. */
+export function cacheRatio(cached: number | null, prompt: number | null): number | null {
+  if (cached === null || prompt === null || prompt <= 0 || cached > prompt) return null;
   return cached / prompt;
+}
+
+/** Known components only; callers must preserve the separate completeness flag. */
+export function knownCost(split: CostBreakdown | null): number | null {
+  if (!split) return null;
+  let sum: number | null = null;
+  for (const value of [split.inUsd, split.cacheUsd, split.cacheWriteUsd, split.outUsd]) {
+    if (value != null) sum = (sum ?? 0) + value;
+  }
+  return sum;
+}
+
+export function partialCost(split: CostBreakdown | null): boolean {
+  return !split || split.inUsd === null || split.cacheUsd === null || split.cacheWriteUsd == null || split.outUsd === null;
 }
