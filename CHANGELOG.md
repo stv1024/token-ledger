@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Switch overview ranges inside the screen instead of pushing a navigation entry per click; the screen title is now fixed. Thanks to @ChtJT (#4, #5).
 - Track agents in Paseo 0.12 background workspaces. Paseo 0.12 hides them from default agent and workspace lists, so their turns were closed as canceled with no usage and their workspace names were missing. Catalog lists now request background workspaces and fall back to unfiltered lists on hosts that predate them. A catalog removal is confirmed by agent ID before the agent's open turn is settled.
 - Add an overview screenshot (demo data, with the sidebar footer row) to the README and as the first manifest media image.
 - Fix harness input semantics: OMP exclusive input is no longer reduced again by a GPT-model fallback; unverified providers are never inferred from model names.

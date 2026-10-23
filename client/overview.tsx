@@ -2,7 +2,7 @@ import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { type PluginScreenProps } from "@getpaseo/plugin/client";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOverview } from "./data.ts";
 import { Pressable, Text, View } from "react-native";
 import type { AgentUsageRow } from "../shared/ledger.ts";
@@ -99,15 +99,16 @@ function RangePicker({ range, theme, onRange }: { range: Range; theme: PluginThe
   );
 }
 
-/** The range lives in the screen params, so the header title and deep links follow it. */
+/** Params seed the initial range; switching is local — openScreen is router.push and stacks history. */
 export function TokenLedgerOverview({
   theme,
   layout,
   navigation,
   params,
-  onRange,
-}: PluginScreenProps & { onRange: (range: Range) => void }) {
-  const range = parseRange(params.range);
+}: PluginScreenProps) {
+  const paramRange = parseRange(params.range);
+  const [range, setRange] = useState(paramRange);
+  useEffect(() => setRange(paramRange), [paramRange]);
   const { data, error } = useOverview(useRangeStart(range));
   const { dense, setWidth } = useDenseLayout(layout.compact);
 
@@ -129,7 +130,7 @@ export function TokenLedgerOverview({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <RangePicker range={range} theme={theme} onRange={onRange} />
+      <RangePicker range={range} theme={theme} onRange={setRange} />
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>
