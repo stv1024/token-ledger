@@ -1,3 +1,4 @@
+import { includingBackground } from './background.ts';
 import { subscribeCatalog, type CatalogSubscription, type OwnedSubscription } from './catalog-subscription.ts';
 
 // Shared code cannot import host client or server SDK types. Callers pass the
@@ -6,26 +7,28 @@ type AgentPage<A> = { entries: readonly { agent: A }[]; pageInfo: { nextCursor?:
 export type AgentUpdate<A> = { kind: 'upsert'; agent: A } | { kind: 'remove'; agentId: string };
 export interface AgentCatalogApi<A> {
   readonly agents: {
-    list(options: { subscribe: {}; page: { limit: number } }): Promise<AgentPage<A> & { subscription: OwnedSubscription<AgentPage<A>> }>;
-    list(options: { page: { limit: number; cursor?: string } }): Promise<AgentPage<A>>;
+    list(options: { subscribe: {}; filter: {}; page: { limit: number } }): Promise<AgentPage<A> & { subscription: OwnedSubscription<AgentPage<A>> }>;
+    list(options: { filter: {}; page: { limit: number; cursor?: string } }): Promise<AgentPage<A>>;
   };
 }
 
 /** A list page is not the complete catalog. Subscribe only on the first page. */
-export async function listAgents<A extends { id: string }>(paseo: AgentCatalogApi<A>): Promise<A[]> {
-  const agents = new Map<string, A>();
-  let cursor: string | undefined;
-  const seen = new Set<string>();
-  do {
-    const page = await paseo.agents.list({
-      page: { limit: 200, ...(cursor ? { cursor } : {}) },
-    });
-    for (const { agent } of page.entries) agents.set(agent.id, agent);
-    cursor = page.pageInfo.nextCursor ?? undefined;
-    if (cursor && seen.has(cursor)) throw new Error("Repeated agent pagination cursor");
-    if (cursor) seen.add(cursor);
-  } while (cursor);
-  return [...agents.values()];
+export function listAgents<A extends { id: string }>(paseo: AgentCatalogApi<A>): Promise<A[]> {
+  return includingBackground(async (filter) => {
+    const agents = new Map<string, A>();
+    let cursor: string | undefined;
+    const seen = new Set<string>();
+    do {
+      const page = await paseo.agents.list({
+        filter, page: { limit: 200, ...(cursor ? { cursor } : {}) },
+      });
+      for (const { agent } of page.entries) agents.set(agent.id, agent);
+      cursor = page.pageInfo.nextCursor ?? undefined;
+      if (cursor && seen.has(cursor)) throw new Error("Repeated agent pagination cursor");
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    return [...agents.values()];
+  });
 }
 
 export function subscribeAgents<A extends { id: string }>(paseo: AgentCatalogApi<A>, handlers: {
@@ -33,9 +36,15 @@ export function subscribeAgents<A extends { id: string }>(paseo: AgentCatalogApi
   onUpdate(update: AgentUpdate<A>): void;
   onError(error: unknown): void;
 }): CatalogSubscription {
+  // Pages must use the same filter as the subscription that opened them.
+  let filter: {} = {};
   return subscribeCatalog({
-    open: () => paseo.agents.list({ subscribe: {}, page: { limit: 200 } }),
-    next: (cursor) => paseo.agents.list({ page: { limit: 200, cursor } }),
+    open: () => includingBackground(async (option) => {
+      const page = await paseo.agents.list({ subscribe: {}, filter: option, page: { limit: 200 } });
+      filter = option;
+      return page;
+    }),
+    next: (cursor) => paseo.agents.list({ filter, page: { limit: 200, cursor } }),
     entries: (page) => page.entries.map(({ agent }) => agent),
     id: (agent) => agent.id,
     update: (value) => {

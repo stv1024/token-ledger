@@ -182,17 +182,19 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         if (open && !agents.get(event.agentId)?.open) needsReconcile.delete(event.agentId);
       },
       gap: (id) => { needsReconcile.add(id); markUsageGap(stateFor(id)); checkpoint(); },
-      restored: async (id) => {
-        const revision = agentRevisions.get(id);
-        const handle = paseo.agents.ref(id);
-        await handle.refresh();
-        if (stopped || agentRevisions.get(id) !== revision) return;
-        const snapshot = handle.current();
-        if (!snapshot) { retireAgent(id, true); return; }
-        applyAgent(snapshot, true);
-      },
+      restored: (id) => reconcileAgent(id, true),
       error: (id, error) => console.error('token-ledger: timeline subscription failed', id, error),
     });
+    // Re-read one agent by ID; a ref resolves agents that lists may hide.
+    const reconcileAgent = async (id: string, restored: boolean) => {
+      const revision = agentRevisions.get(id);
+      const handle = paseo.agents.ref(id);
+      await handle.refresh();
+      if (stopped || agentRevisions.get(id) !== revision) return;
+      const snapshot = handle.current();
+      if (!snapshot) { catalog.remove(id); retireAgent(id, restored); return; }
+      applyAgent(snapshot, restored);
+    };
     const applyAgent = (agent: PaseoAgent, restored = false) => {
       restored = needsReconcile.delete(agent.id) || restored;
       bump(agent.id);
@@ -213,7 +215,18 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         onUpdate: (update) => {
           if (stopped) return;
           if (update.kind === 'upsert') applyAgent(update.agent);
-          else { bump(update.agentId); catalog.remove(update.agentId); retireAgent(update.agentId); }
+          else {
+            // A remove can mean the agent left this list's filter (such as a
+            // background workspace), not that it was archived or deleted.
+            const id = update.agentId;
+            bump(id);
+            const revision = agentRevisions.get(id);
+            void reconcileAgent(id, false).catch((error) => {
+              console.error('token-ledger: could not confirm agent removal', id, error);
+              if (stopped || agentRevisions.get(id) !== revision) return;
+              catalog.remove(id); retireAgent(id);
+            });
+          }
         },
         onError: (error) => {
           for (const [id, state] of agents) { needsReconcile.add(id); markUsageGap(state); }

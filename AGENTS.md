@@ -1,6 +1,6 @@
 # AGENTS.md — 开发调试速查
 
-TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
+TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
 ## UI 设计理念
 
@@ -74,6 +74,13 @@ paseo agent archive <id>                                  # 测完归档，别�
 - `addSurface` / `addSidebarItem` / `openSurface` 已弃用，不要再用。不接 `registerUsageSource`（那是订阅额度窗口，不是逐轮 usage；用户已决定不放进 Usage 面板）。
 - OMP 轮末 drain（0.11.2 源码验证）：`turn_completed` 不带 usage，先于 poller 的最终 `usage_updated` 发出；最终快照仍带 activeTurn，且 usage 未变化时不发。所以 session scope 的 completed 轮先记 `open.ending`（随 journal 恢复），在第一个新观察、下一轮开始或 2s 超时时结算，状态和 endedAt 取 ending。失败/取消立即结算。session/unknown 的 `modelCalls` 为 null（快照数不是调用数）。
 - 0.11.2 的 cache-write、Codex 内部子代理 usage、OMP branch epoch 缺口仍在。OMP 统计已包含部分子代理，不能无条件再叠加。徽标使用 Session token snapshot，不以 unknown 代替已知快照；未知 scope 不求 token 总数。历史 Timeline 缺少 scope 元数据时只声明元数据缺失，不声明账本排除。更新后重载客户端以使用新字段。
+
+## 0.12 适配约束
+
+- **background workspace 默认被过滤**：0.12 的 `agents.list` / `workspaces.list` 及其 update 流不带 `filter.includeBackground` 时排除 background workspace，被过滤的 agent 以 `remove` 推送。MCP 新建 workspace 会继承调用方的 background，子 agent 常在其中。所有目录 list 都经 `shared/background.ts` 的 `includingBackground`；同一订阅的翻页必须沿用 open 时的 filter。0.12+ 客户端 SDK 连旧 daemon 会抛 "Update the host to use background workspaces."，回退为无 filter，不抬高最低版本。
+- **`remove` 不等于删除**：tracker 收到 update 流的 `remove` 后先 `agents.ref(id).refresh()` 确认（按 ID 不受 background 过滤），agent 仍在则保留 open turn，确认消失才 retire。
+- CLI 的 `paseo agent archive <id>` 找不到 background agent；测试后用 `paseo workspace archive` 和 `paseo project delete` 清理。
+- 0.12 编译器允许 type-only import `@getpaseo/protocol/*` 子路径，但最低版本仍是 0.11，上面的 import 禁令不变。0.13 将弃用 `/client/react-native`（改用 `/client/ui`），届时再迁移。
 
 ## 截图
 

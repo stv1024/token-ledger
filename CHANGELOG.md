@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Track agents in Paseo 0.12 background workspaces. Paseo 0.12 hides them from default agent and workspace lists, so their turns were closed as canceled with no usage and their workspace names were missing. Catalog lists now request background workspaces and fall back to unfiltered lists on hosts that predate them. A catalog removal is confirmed by agent ID before the agent's open turn is settled.
 - Add an overview screenshot (demo data, with the sidebar footer row) to the README and as the first manifest media image.
 - Fix harness input semantics: OMP exclusive input is no longer reduced again by a GPT-model fallback; unverified providers are never inferred from model names.
 - Separate per-turn usage from OMP current-session/branch totals and unknown-scope snapshots, including historical v1 records. Snapshots remain visible but are excluded from turn/date-range sums and estimates. Late idle usage updates refresh a separate latest-snapshot card, not an invented turn delta.

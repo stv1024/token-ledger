@@ -1,4 +1,5 @@
 import type { PaseoAgent, PaseoApi, PaseoWorkspace, PaseoWorkspaceListResult, PaseoWorkspaceUpdate } from './paseo-types.ts';
+import { includingBackground } from '../shared/background.ts';
 import { subscribeCatalog, type CatalogSubscription } from '../shared/catalog-subscription.ts';
 
 type Metadata = Pick<PaseoAgent, 'id' | 'workspaceId' | 'title' | 'provider' | 'model' | 'status' | 'updatedAt' | 'archivedAt'>;
@@ -18,9 +19,14 @@ export class Catalog {
 
   ensureWorkspaces(paseo: PaseoApi): Promise<void> {
     if (this.disposed) return Promise.resolve();
+    let filter: {} = {};
     this.subscription ??= subscribeCatalog<PaseoWorkspace, PaseoWorkspaceListResult, PaseoWorkspaceUpdate>({
-      open: () => paseo.workspaces.list({ subscribe: {}, page: { limit: 200 } }),
-      next: (cursor) => paseo.workspaces.list({ page: { limit: 200, cursor } }),
+      open: () => includingBackground(async (option) => {
+        const page = await paseo.workspaces.list({ subscribe: {}, filter: option, page: { limit: 200 } });
+        filter = option;
+        return page;
+      }),
+      next: (cursor) => paseo.workspaces.list({ filter, page: { limit: 200, cursor } }),
       entries: (page) => page.entries,
       id: (workspace) => workspace.id,
       update: (value) => {

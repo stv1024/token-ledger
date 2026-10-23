@@ -28,7 +28,7 @@ the release for Paseo 0.9.1-0.10.x hosts.
   any other type import breaks installation. Updating the host does not require
   updating these pins in lockstep.
 - **Ongoing checks:** CI runs the typecheck and existing tests against 0.11.0,
-  0.11.1, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
+  0.11.1, 0.12.0, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
   detect type and SDK regressions; real provider turns remain necessary to
   verify token/cost semantics and host behavior. CI failures do not silently
   rewrite the compatibility range or disable installed plugins.
@@ -46,6 +46,7 @@ exclude beta builds.
 | 0.10.2 | Installed desktop/daemon, published SDK, typecheck, 65 tests, plugin reload, real Claude/Codex turns on 2026-09-30 | Compatible with v0.6.3 |
 | 0.11.0 | Published SDK (plugin dist identical to 0.11.1), typecheck and 65 tests on 2026-10-09 | Minimum for v0.7.0; no installed host tested |
 | 0.11.1 | Installed desktop/daemon, published SDK, typecheck, 65 tests, dependency-free compile probe, plugin reload, real Claude/Codex turns, manual sidebar and overview check on 2026-10-09 | Supported by v0.7.0 |
+| 0.12.0 | Installed desktop/daemon, published SDK, typecheck and 75 tests against both the 0.11.1 pin and 0.12.0, plugin reload, real Claude turns in a background workspace (before/after control) on 2026-10-23 | Requires the background-workspace fix below; otherwise compatible |
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
 
 The 0.11.1 investigation found:
@@ -104,3 +105,33 @@ An isolated 0.11.2 daemon with synthetic data verified the overview warning,
 the `Session ≈4.12M tok` pill and its snapshot panel, and supplied the refreshed
 screenshots. No model prompt was sent. The production plugin was reloaded
 for local trial only; no package version was published.
+
+The 0.12.0 review compared the v0.11.2 and v0.12.0 sources:
+
+- Paseo 0.12 adds background workspaces. `agents.list`, `workspaces.list`
+  and their `agent_update` / `workspace_update` streams exclude them unless the
+  request sets `filter.includeBackground`, and an agent that is hidden by the
+  filter arrives as `remove`. TokenLedger previously retired such agents: one
+  real turn in a background workspace was recorded as a 3 ms `canceled` turn
+  with no usage. TokenLedger now requests background workspaces, confirms each
+  `remove` with `agents.ref(id).refresh()`, and keeps the open turn when the
+  agent still exists. The same turn sequence then recorded `completed` turns.
+- A 0.12+ client SDK rejects `includeBackground` with "Update the host to use
+  background workspaces." when the host does not advertise the feature (a 0.12
+  app on a 0.11 daemon). TokenLedger retries those lists without the filter, so
+  the minimum remains 0.11.0. Older daemons drop the unknown filter field.
+- The plugin SDK client API, lifecycle hooks, timeline subscription and
+  `AgentUsage` are unchanged. Claude still omits cache creation and reports a
+  session-cumulative `totalCostUsd`; Codex still reports per-request `last`
+  usage with cached input included; OMP still emits `turn_completed` before
+  the final usage drain. The proxy context-meter fixes change only
+  `contextWindowUsedTokens`.
+- The compiler now resolves type-only `@getpaseo/protocol/*` subpath imports.
+  TokenLedger does not rely on this while it supports 0.11.0.
+- Agent-to-agent messages now steer a running turn instead of interrupting it,
+  so one record can cover several prompts. Plugin ACP providers without
+  `prompt.steer` still replace the turn.
+- 0.13.0-beta.1 deprecates `/client/react-native` in favor of `/client/ui`
+  (alias kept until 2027-04-20), empties the deprecated `timeline` field of the
+  `turn_ended` hook (TokenLedger does not read it), and applies the background
+  filter to stored agents as well.

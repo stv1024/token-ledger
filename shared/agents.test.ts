@@ -13,8 +13,8 @@ test('one-off catalog reads traverse all pages without creating subscriptions', 
   } } } as unknown as PaseoApi;
   assert.deepEqual((await listAgents(paseo)).map(a => a.id), ['a', 'b']);
   assert.deepEqual(calls, [
-    { page: { limit: 200 } },
-    { page: { limit: 200, cursor: 'next' } },
+    { filter: { includeBackground: true }, page: { limit: 200 } },
+    { filter: { includeBackground: true }, page: { limit: 200, cursor: 'next' } },
   ]);
 });
 
@@ -34,7 +34,7 @@ test('real 0.9 SDK accepts host-assigned catalog IDs, forwards restored pages an
   });
   try {
     await subscription.ready;
-    assert.deepEqual(calls, [{ subscribe: {}, page: { limit: 200 } }]);
+    assert.deepEqual(calls, [{ subscribe: {}, filter: { includeBackground: true }, page: { limit: 200 } }]);
     assert.deepEqual(snapshots, [['a', 'b']]);
     owned.snapshot({ entries: [{ agent: { id: 'new' } }], pageInfo: { nextCursor: 'next' } });
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -45,4 +45,44 @@ test('real 0.9 SDK accepts host-assigned catalog IDs, forwards restored pages an
 test('repeated pagination cursor fails instead of looping forever', async () => {
   const paseo = { agents: { list: async () => ({ entries: [], pageInfo: { nextCursor: 'same' } }) } } as unknown as PaseoApi;
   await assert.rejects(listAgents(paseo), /Repeated/);
+});
+
+test('hosts without background workspaces get unfiltered lists on every page', async () => {
+  const calls: unknown[] = [];
+  const first = { entries: [{ agent: { id: 'a' } }], pageInfo: { nextCursor: 'next' } };
+  const owned = ownedSnapshot(first);
+  // A 0.12+ client SDK rejects the filter before sending it to an older host.
+  const paseo = { agents: { list: async (options: { filter?: { includeBackground?: boolean }; subscribe?: {}; page: { cursor?: string } }) => {
+    calls.push(options);
+    if (options.filter?.includeBackground) throw new Error('Update the host to use background workspaces.');
+    if (options.page.cursor) return { entries: [{ agent: { id: 'b' } }], pageInfo: { nextCursor: null } };
+    return options.subscribe ? owned.page : first;
+  } } } as unknown as PaseoApi;
+  assert.deepEqual((await listAgents(paseo)).map((a) => a.id), ['a', 'b']);
+  assert.deepEqual(calls.splice(0), [
+    { filter: { includeBackground: true }, page: { limit: 200 } },
+    { filter: {}, page: { limit: 200 } },
+    { filter: {}, page: { limit: 200, cursor: 'next' } },
+  ]);
+  const snapshots: string[][] = [];
+  const subscription = subscribeAgents(paseo, {
+    onSnapshot: (agents) => snapshots.push(agents.map((agent) => agent.id)),
+    onUpdate: () => {}, onError: (error) => { throw error; },
+  });
+  try {
+    await subscription.ready;
+    assert.deepEqual(snapshots, [['a', 'b']]);
+    assert.deepEqual(calls, [
+      { subscribe: {}, filter: { includeBackground: true }, page: { limit: 200 } },
+      { subscribe: {}, filter: {}, page: { limit: 200 } },
+      { filter: {}, page: { limit: 200, cursor: 'next' } },
+    ]);
+  } finally { await subscription.release(); }
+});
+
+test('other list failures are not retried without the filter', async () => {
+  let calls = 0;
+  const paseo = { agents: { list: async () => { calls++; throw new Error('offline'); } } } as unknown as PaseoApi;
+  await assert.rejects(listAgents(paseo), /offline/);
+  assert.equal(calls, 1);
 });
