@@ -5,6 +5,8 @@ Status: submitted as follow-up comments in existing upstream Discussions on
 
 - [Cache creation counts — discussion #4623](https://github.com/getpaseo/paseo/discussions/4623#discussioncomment-18550901).
 - [Descendant usage and attribution — discussion #4660](https://github.com/getpaseo/paseo/discussions/4660#discussioncomment-18550906).
+- [2026-10-14 follow-up: OMP cache creation and input conventions](https://github.com/getpaseo/paseo/discussions/4623#discussioncomment-18924605).
+- [2026-10-14 follow-up: final drain, branch epochs and attribution](https://github.com/getpaseo/paseo/discussions/4660#discussioncomment-18924607).
 
 Paseo's [contribution policy](https://github.com/getpaseo/paseo/blob/b2ce2bcb83dd40bd91c32098c59221f0b52d7ffd/CONTRIBUTING.md)
 directs missing extension points to Discussions. Existing threads covered both
@@ -31,6 +33,27 @@ these upstream gaps.
 Rechecked on 2026-09-30 against the installed Paseo 0.10.2 provider source and
 published SDK: the same cache-creation and Codex child-usage gaps remain. See
 the [compatibility review](compatibility.md) for the scope of this verification.
+
+Rechecked on 2026-10-14 against installed 0.11.2, separately from public `main`
+at `cafa04d3fbdbc7e4a3fe8f4d4bea80f15cd4a1d0`. The follow-ups above were posted
+as `stv1024` and read back through GitHub; submission does not imply acceptance.
+The public OMP usage poller was exercised in memory with synthetic statistics
+and controlled promises, not by running the full upstream daemon:
+
+- OMP maps `getSessionStats()` input/read/output/cost but drops `cacheWrite`.
+  The installed OMP statistics are already cache-exclusive and aggregate the
+  current session/branch, including some task-child usage.
+- Completion can precede final usage; starting another turn can invalidate
+  the pending final sample. Public snapshots do not preserve its turn identity.
+  Require terminal drain or attributable late corrections, plus branch/reset
+  epochs; subtracting adjacent snapshots is not a reliable per-turn contract.
+- Context-only OMP stats become zero token/cost values in the current mapper.
+  The plugin cannot distinguish those fabricated zeros from measured zero.
+- Claude cache creation and Codex child usage remain omitted. Merged
+  [#6703](https://github.com/getpaseo/paseo/pull/6703) and
+  [#6106](https://github.com/getpaseo/paseo/pull/6106) improve context accounting,
+  not the missing billing/usage contract. They are not duplicate bug reports.
+
 
 ## 1. Preserve cache creation usage
 
@@ -137,6 +160,8 @@ history/subscription. Persist identities before acknowledging ingestion, price
 each request with its own model, and select one accounting scope for each
 total. Keep the current snapshot path as an explicitly partial fallback.
 
-Until then, TokenLedger's ordinary snapshot/terminal tracking remains active.
-Historical missing counts and descendant charges cannot be reconstructed from
-the current public API, and this change does not claim to restore them.
+Until then, verified turn/request tracking remains active. OMP session/branch
+and unknown-scope observations are displayed separately and excluded from
+per-turn costs and sums; late observations refresh the latest-snapshot card.
+Coverage and unknown prices are explicit. Historical missing counts and
+descendant charges cannot be reconstructed from the current public API.

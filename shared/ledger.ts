@@ -8,6 +8,8 @@ export const TurnRecordSchema = z.object({
   turnId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
+  /** Omitted in v1 history; inferred only from verified harness semantics. */
+  tokenScope: z.enum(['turn', 'session', 'unknown']).optional(),
   /** Provider session identity, when observed; optional for pre-0.8 records. */
   sessionId: z.string().nullable().optional(),
   startedAt: z.string().nullable(),
@@ -17,11 +19,10 @@ export const TurnRecordSchema = z.object({
   /** A subscription gap may have hidden requests or the terminal outcome. */
   usageGap: z.boolean().optional(),
   /**
-   * Turn token totals. On disk these are exactly as reported upstream (some
-   * providers count cache reads inside input — see semantics.ts); rows served
-   * over RPC normalize verified inclusive providers to ordinary input, with
-   * cache reads and known cache writes separate. Unknown semantics pass through.
-   * Null when the provider reported nothing.
+   * Raw observed counts on disk. Only turn-scoped observations enter totals.
+   * Session/unknown snapshots remain visible but cannot be added across turns.
+   * RPC input is uncached input for known harnesses, possibly including writes
+   * when their count was not exposed. Null means unavailable, not zero.
    */
   input: z.number().nullable(),
   cached: z.number().nullable(),
@@ -39,8 +40,11 @@ export const TurnRecordSchema = z.object({
     input: z.number().nullable(), cached: z.number().nullable(), output: z.number().nullable(),
     cacheWrite: z.number().finite().nonnegative().nullable().optional(),
   })).optional(),
-  /** Number of distinct token-bearing usage observations during the turn. */
-  modelCalls: z.number(),
+  /**
+   * Number of distinct token-bearing usage observations during the turn; null for
+   * session/unknown scope where snapshots do not map 1:1 to model calls.
+   */
+  modelCalls: z.number().nullable(),
   quality: z.enum(["exact", "partial", "unavailable"]),
   /** How the token totals were derived: turn_usage | summed_observations | last_observation | none */
   source: z.string(),
@@ -51,16 +55,23 @@ export const CostSourceSchema = z.enum(["reported", "override", "openrouter", "b
 export type CostSource = z.infer<typeof CostSourceSchema>;
 
 export const CostBreakdownSchema = z.object({
-  inUsd: z.number(),
-  cacheUsd: z.number(),
-  cacheWriteUsd: z.number().optional(),
-  outUsd: z.number(),
+  inUsd: z.number().nullable(),
+  cacheUsd: z.number().nullable(),
+  cacheWriteUsd: z.number().nullable().optional(),
+  outUsd: z.number().nullable(),
   otherUsd: z.number().nullable(),
 });
 
 /** A record enriched at read time. The JSONL remains untouched and contains only upstream facts. */
 export const TurnRowSchema = TurnRecordSchema.extend({
   seq: z.number().int().positive(),
+  tokenScope: z.enum(['turn', 'session', 'unknown']),
+  /** Null when the prompt denominator cannot be established. */
+  promptTokens: z.number().nullable(),
+  incompleteUsage: z.boolean(),
+  /** Some components or rates are unavailable; cost is only a partial estimate. */
+  partialCost: z.boolean(),
+  pricingWarning: z.string().nullable(),
   effectiveCostUsd: z.number().nullable(),
   costSource: CostSourceSchema.nullable(),
   costBreakdown: CostBreakdownSchema.nullable(),
@@ -71,7 +82,11 @@ export const InFlightSchema = z.object({
   usageGap: z.boolean().optional(),
   turnId: z.string().nullable(),
   startedAt: z.string(),
-  modelCalls: z.number(),
+  modelCalls: z.number().nullable(),
+  tokenScope: z.enum(['turn', 'session', 'unknown']),
+  promptTokens: z.number().nullable(),
+  partialCost: z.boolean(),
+  pricingWarning: z.string().nullable(),
   input: z.number().nullable(),
   cached: z.number().nullable(),
   cacheWrite: z.number().nullable().optional(),
@@ -86,15 +101,20 @@ export type InFlight = z.infer<typeof InFlightSchema>;
 
 export const SummarySchema = z.object({
   turns: z.number(),
-  input: z.number(),
-  cached: z.number(),
-  cacheWrite: z.number().optional(),
-  output: z.number(),
+  input: z.number().nullable(),
+  cached: z.number().nullable(),
+  cacheWrite: z.number().nullable().optional(),
+  output: z.number().nullable(),
   costUsd: z.number().nullable(),
   /** Reported + estimated costs for priced turns. */
   effectiveCostUsd: z.number().nullable(),
   estimatedTurns: z.number().int().nonnegative(),
   unpricedTurns: z.number().int().nonnegative(),
+  /** Observations that are not attributable to an individual turn. */
+  unmeasuredTurns: z.number().int().nonnegative(),
+  incompleteTurns: z.number().int().nonnegative(),
+  partialCostTurns: z.number().int().nonnegative(),
+  pricingWarningTurns: z.number().int().nonnegative(),
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
@@ -103,6 +123,15 @@ export const CtxSchema = z.object({
   max: z.number(),
 });
 export type Ctx = z.infer<typeof CtxSchema>;
+export const UsageSnapshotSchema = z.object({
+  scope: z.enum(['session', 'unknown']),
+  input: z.number().nullable(), cached: z.number().nullable(),
+  cacheWrite: z.number().nullable(), output: z.number().nullable(),
+  reportedCostUsd: z.number().nullable(),
+  observedAt: z.string().nullable(),
+});
+export type UsageSnapshot = z.infer<typeof UsageSnapshotSchema>;
+
 
 const SyncOutputSchema = z.object({
   recordsRevision: z.string(),
@@ -111,6 +140,8 @@ const SyncOutputSchema = z.object({
   summary: SummarySchema,
   /** Last known context-window usage for the agent, in or out of a turn. */
   ctx: CtxSchema.nullable(),
+  /** Latest cumulative/unknown observation, including late idle updates. Not a turn total. */
+  usageSnapshot: UsageSnapshotSchema.nullable(),
 });
 export type SyncResult = z.infer<typeof SyncOutputSchema>;
 

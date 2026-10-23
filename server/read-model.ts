@@ -3,13 +3,17 @@ import { allRecords, storeRevision } from './store.ts';
 import { enrichTurn, pricingRevision } from './pricing.ts';
 export const EMPTY_SUMMARY: Summary = {
   turns: 0,
-  input: 0,
-  cached: 0,
-  output: 0,
+  input: null,
+  cached: null,
+  output: null,
   costUsd: null,
   effectiveCostUsd: null,
   estimatedTurns: 0,
   unpricedTurns: 0,
+  unmeasuredTurns: 0,
+  incompleteTurns: 0,
+  partialCostTurns: 0,
+  pricingWarningTurns: 0,
 };
 
 /** Sums enriched rows, so a caller can summarize any subset of the read model. */
@@ -17,14 +21,22 @@ export function summaryFromRows(rows: readonly TurnRow[]): Summary {
   const summary: Summary = { ...EMPTY_SUMMARY };
   for (const row of rows) {
     summary.turns += 1;
-    summary.input += row.input ?? 0;
-    summary.cached += row.cached ?? 0;
+    if (row.incompleteUsage) summary.incompleteTurns += 1;
+    if (row.pricingWarning) summary.pricingWarningTurns += 1;
+    if (row.tokenScope !== 'turn') {
+      summary.unmeasuredTurns += 1;
+      summary.unpricedTurns += 1;
+      continue;
+    }
+    if (row.input !== null) summary.input = (summary.input ?? 0) + row.input;
+    if (row.cached !== null) summary.cached = (summary.cached ?? 0) + row.cached;
     if (row.cacheWrite != null) summary.cacheWrite = (summary.cacheWrite ?? 0) + row.cacheWrite;
-    summary.output += row.output ?? 0;
+    if (row.output !== null) summary.output = (summary.output ?? 0) + row.output;
     if (row.costUsd !== null) summary.costUsd = (summary.costUsd ?? 0) + row.costUsd;
     if (row.effectiveCostUsd !== null) {
       summary.effectiveCostUsd = (summary.effectiveCostUsd ?? 0) + row.effectiveCostUsd;
       if (row.costSource !== "reported") summary.estimatedTurns += 1;
+      if (row.partialCost) summary.partialCostTurns += 1;
     } else {
       summary.unpricedTurns += 1;
     }

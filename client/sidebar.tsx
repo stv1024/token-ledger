@@ -9,7 +9,7 @@ import { costOrTokens } from "./ui.tsx";
 export function LedgerSidebarItem({ theme, currentScreen, openScreen }: PluginSidebarItemProps) {
   const { data } = useOverview(useRangeStart("today"));
   const working = !!data?.groups.some((group) => group.agents.some((agent) => agent.active));
-  const label = !data ? null : data.totals.turns === 0 ? "$0.00" : costOrTokens(data.totals);
+  const label = data ? costOrTokens(data.totals) : null;
   return (
     <SidebarRow
       icon={working ? "Activity" : "Coins"}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PaseoAgentTimelineEvent } from "./paseo-types.ts";
 import { finalizeTurn, mergeObservation, sameTokens, tokenObservation, type UsageLike } from "../shared/aggregate.ts";
 import type { TurnRecord } from "../shared/ledger.ts";
+import { tokenScope } from '../shared/semantics.ts';
 
 const nullableCount = z.number().finite().nonnegative().nullable();
 const observationSchema = z.object({ input: nullableCount, cached: nullableCount, cacheWrite: nullableCount.optional(), output: nullableCount, cost: nullableCount });
@@ -11,11 +12,15 @@ export const AgentStateSchema = z.object({
   provider: z.string().nullable(), model: z.string().nullable(), sessionId: z.string().nullable(),
   open: z.object({ key: z.string(), turnId: z.string().nullable(), startedAt: z.string(),
     usageGap: z.boolean().optional(),
+    /** Known outcome whose settlement waits for usage that drains after the terminal event. */
+    ending: z.object({ status: z.enum(['completed', 'failed', 'canceled', 'unknown']), endedAt: z.string(),
+      from: z.enum(['stream', 'hook']) }).optional(),
     provider: z.string().nullable(), model: z.string().nullable(), sessionId: z.string().nullable(),
     observations: z.array(observationSchema), lastUsage: contextSchema.nullable(),
   }).nullable(),
   prevSessionCostUsd: nullableCount, lastObservation: observationSchema.nullable(),
   costBaselineUncertain: z.boolean().optional(),
+  lastObservedAt: z.string().nullable().optional(),
   usageGapPending: z.boolean().optional(),
   lastCtx: z.object({ used: z.number(), max: z.number() }).nullable(),
   lastClosedTurnId: z.string().nullable(), lastClosedAt: z.string().nullable(),
@@ -42,6 +47,8 @@ function openTurn(state: AgentState, turnId: string | null, startedAt: string) {
 export function closeTurn(agentId: string, state: AgentState, status: TurnRecord["status"], finalUsage: UsageLike | null, endedAt: string): TurnRecord | null {
   const open = state.open;
   if (!open) return null;
+  // Interruption or a drain timeout cannot overrule an outcome already reported.
+  if (open.ending) { status = open.ending.status; endedAt = open.ending.endedAt; }
   state.open = null;
   state.usageGapPending = false;
   state.lastClosedTurnId = open.turnId;
@@ -75,6 +82,7 @@ function sessionChanged(agentId: string, state: AgentState, sessionId: string | 
     state.costBaselineUncertain = false;
     state.usageGapPending = false;
     state.lastObservation = null;
+    state.lastObservedAt = null;
     state.lastClosedTurnId = null;
     state.lastClosedAt = null;
   }
@@ -83,7 +91,7 @@ function sessionChanged(agentId: string, state: AgentState, sessionId: string | 
   return interrupted;
 }
 export function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): TurnRecord | null {
-  const interrupted = sessionChanged(snapshot.id, state, snapshot.runtimeInfo?.sessionId);
+  let interrupted = sessionChanged(snapshot.id, state, snapshot.runtimeInfo?.sessionId);
   if (snapshot.provider) state.provider = snapshot.provider;
   if (snapshot.model !== undefined) state.model = snapshot.model;
   // Fill metadata that wasn't available at start; don't reattribute an old turn
@@ -92,20 +100,29 @@ export function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): TurnR
     state.open.provider ??= state.provider;
     state.open.model ??= state.model;
   }
+  const active = snapshot.activeTurn;
+  if (active && state.open && active.turnId !== state.open.turnId) {
+    // A newer turn proves that an ending turn has finished draining.
+    if (!state.open.ending) return interrupted;
+    interrupted = closeTurn(snapshot.id, state, 'unknown', null, new Date().toISOString());
+  }
+  const closedReplay = active && active.turnId === state.lastClosedTurnId && active.turnId !== state.open?.turnId
+    && (!active.startedAt || !state.lastClosedAt || Date.parse(active.startedAt) <= Date.parse(state.lastClosedAt));
+  if (closedReplay && tokenScope(state) === 'turn') return interrupted;
+  const observation = tokenObservation(snapshot.lastUsage);
+  const isNew = observation !== null && (state.lastObservation === null || !sameTokens(state.lastObservation, observation));
+  if (observation) {
+    state.lastObservation = state.lastObservation && !isNew
+      ? mergeObservation(state.lastObservation, observation) : observation;
+    state.lastObservedAt = new Date().toISOString();
+  }
   const usage = snapshot.lastUsage;
   if (usage && Number.isFinite(usage.contextWindowUsedTokens) && Number.isFinite(usage.contextWindowMaxTokens)) {
     state.lastCtx = { used: usage.contextWindowUsedTokens!, max: usage.contextWindowMaxTokens! };
   }
-  const active = snapshot.activeTurn;
-  if (active && active.turnId === state.lastClosedTurnId && active.turnId !== state.open?.turnId) {
-    if (!active.startedAt || !state.lastClosedAt || Date.parse(active.startedAt) <= Date.parse(state.lastClosedAt)) return interrupted;
-    state.lastClosedTurnId = null; // verified newer occurrence of a reused ID
-  }
-  if (active && state.open && active.turnId !== state.open.turnId) return interrupted;
-  const observation = tokenObservation(usage);
-  const isNew = observation !== null && (state.lastObservation === null || !sameTokens(state.lastObservation, observation));
-  if (observation) state.lastObservation = state.lastObservation && !isNew
-    ? mergeObservation(state.lastObservation, observation) : observation;
+  // Cumulative/unknown late observations remain visible as snapshots only.
+  if (closedReplay) return interrupted;
+  if (active?.turnId === state.lastClosedTurnId) state.lastClosedTurnId = null;
   if (!state.open && !active) {
     state.usageGapPending = false;
     if (typeof usage?.totalCostUsd === "number" && Number.isFinite(usage.totalCostUsd) && usage.totalCostUsd >= 0) {
@@ -127,6 +144,11 @@ export function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): TurnR
     if (sameTokens(open.observations[last], observation)) {
       open.observations[last] = mergeObservation(open.observations[last], observation);
     }
+  }
+  // The first changed session snapshot after the outcome is the final drain:
+  // the harness publishes it only once, and only when usage changed.
+  if (open.ending && isNew && tokenScope({ provider: open.provider ?? state.provider }) === 'session') {
+    return closeTurn(snapshot.id, state, open.ending.status, null, open.ending.endedAt) ?? interrupted;
   }
   return interrupted;
 }
@@ -152,6 +174,12 @@ export function reconcileUsage(state: AgentState, snapshot: AgentSnapshotLike): 
   const interrupted = noteUsage(state, snapshot);
   if (interrupted) records.push(interrupted);
   return records;
+}
+/** Records a hook outcome; the stream outcome, when present, remains authoritative. */
+export function endLifecycleTurn(state: AgentState, turnId: string | null, status: TurnRecord['status'], at: string): boolean {
+  if (!state.open || state.open.turnId !== turnId) return false;
+  state.open.ending ??= { status, endedAt: at, from: 'hook' };
+  return true;
 }
 export function startLifecycleTurn(agentId: string, state: AgentState, turnId: string | null, at: string): TurnRecord | null {
   // A delayed hook must not resurrect the turn already completed on the stream.
@@ -183,11 +211,18 @@ export function streamTurn(state: AgentState, payload: PaseoAgentTimelineEvent):
     }
     case "turn_completed":
     case "turn_failed":
-    case "turn_canceled":
+    case "turn_canceled": {
       if (event.turnId && state.open?.turnId && event.turnId !== state.open.turnId) return null;
-      return closeTurn(payload.agentId, state,
-        event.type === "turn_completed" ? "completed" : event.type === "turn_failed" ? "failed" : "canceled",
-        event.type === "turn_completed" ? event.usage ?? null : null, at);
+      if (!state.open) return null;
+      const status = event.type === "turn_completed" ? "completed" : event.type === "turn_failed" ? "failed" : "canceled";
+      const usage = event.type === "turn_completed" ? event.usage ?? null : null;
+      if (state.open.ending?.from !== 'stream') state.open.ending = { status, endedAt: at, from: 'stream' };
+      // OMP reports no terminal usage and publishes its final session snapshot
+      // only after turn_completed, on the separate agent_update channel.
+      if (status === 'completed' && !tokenObservation(usage)
+          && tokenScope({ provider: state.open.provider ?? state.provider }) === 'session') return null;
+      return closeTurn(payload.agentId, state, status, usage, at);
+    }
     default: return null;
   }
 }

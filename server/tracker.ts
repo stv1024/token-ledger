@@ -1,12 +1,13 @@
-import { closeTurn, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
+import { closeTurn, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn, endLifecycleTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
 import { loadJournal, saveJournal } from "./journal.ts";
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { subscribeAgents } from "../shared/agents.ts";
 import type { CatalogSubscription } from '../shared/catalog-subscription.ts';
 import type { PaseoAgent, PaseoAgentTimelineEvent, PaseoApi } from "./paseo-types.ts";
-import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord } from "../shared/ledger.ts";
-import { freshInput, usageSemantics, providerSemantics } from "../shared/semantics.ts";
-import { ensurePricing, estimateUsageCost } from "./pricing.ts";
+import type { AgentUsageRow, InFlight, OverviewResult, Summary, SyncResult, TurnRecord, UsageSnapshot } from "../shared/ledger.ts";
+import { freshInput, tokenScope, usageSemantics } from "../shared/semantics.ts";
+import { finalizeTurn } from '../shared/aggregate.ts';
+import { ensurePricing, enrichTurn } from "./pricing.ts";
 import {
   allRecords,
   flushStore,
@@ -75,7 +76,28 @@ function stateFor(agentId: string): AgentState {
   return state;
 }
 export function observeStream(payload: PaseoAgentTimelineEvent): void {
-  if (!stopped) persist(streamTurn(stateFor(payload.agentId), payload));
+  if (stopped) return;
+  const state = stateFor(payload.agentId);
+  persist(streamTurn(state, payload));
+  if (state.open?.ending) scheduleSettle(payload.agentId, state);
+}
+// OMP publishes its final usage only when it changed, so a missing drain
+// snapshot is normal. The bound covers its async stats read, not its 3s poll.
+const SESSION_DRAIN_MS = 2000;
+const STREAM_SETTLE_MS = 250;
+function scheduleSettle(agentId: string, state: AgentState): void {
+  const open = state.open;
+  if (!open?.ending) return;
+  const key = open.key;
+  if (terminalTimers.has(key)) return;
+  const session = tokenScope({ provider: open.provider ?? state.provider }) === 'session';
+  // The stream carries terminal usage; the hook independently carries outcome.
+  // Give the usage a brief chance to settle, then finalize observed facts only.
+  const settle = () => {
+    terminalTimers.delete(key);
+    if (state.open?.key === key) persist(closeTurn(agentId, state, state.open.ending?.status ?? 'unknown', null, new Date().toISOString()));
+  };
+  terminalTimers.set(key, { timer: setTimeout(settle, session ? SESSION_DRAIN_MS : STREAM_SETTLE_MS), settle });
 }
 export async function observeStart(event: PluginLifecycleEvents["agent.turn_started"], paseo: PaseoApi): Promise<void> {
   await ensureTracker(paseo);
@@ -89,17 +111,9 @@ export async function observeEnd(event: PluginLifecycleEvents["agent.turn_ended"
   await ensureTracker(paseo);
   if (stopped) return;
   const state = stateFor(event.agent.id);
-  if (!state.open || state.open.turnId !== event.turnId) return;
-  const key = state.open.key;
-  const endedAt = new Date().toISOString();
-  clearTimeout(terminalTimers.get(key)?.timer);
-  // The stream carries terminal usage; the hook independently carries outcome.
-  // Give the stream a brief chance to settle, then finalize observed facts only.
-  const settle = () => {
-    terminalTimers.delete(key);
-    if (state.open?.key === key) persist(closeTurn(event.agent.id, state, event.outcome.kind, null, endedAt));
-  };
-  terminalTimers.set(key, { timer: setTimeout(settle, 250), settle });
+  if (!endLifecycleTurn(state, event.turnId, event.outcome.kind, new Date().toISOString())) return;
+  checkpoint();
+  scheduleSettle(event.agent.id, state);
 }
 function retireAgent(id: string, gap = false): void {
   needsReconcile.delete(id);
@@ -168,17 +182,19 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         if (open && !agents.get(event.agentId)?.open) needsReconcile.delete(event.agentId);
       },
       gap: (id) => { needsReconcile.add(id); markUsageGap(stateFor(id)); checkpoint(); },
-      restored: async (id) => {
-        const revision = agentRevisions.get(id);
-        const handle = paseo.agents.ref(id);
-        await handle.refresh();
-        if (stopped || agentRevisions.get(id) !== revision) return;
-        const snapshot = handle.current();
-        if (!snapshot) { retireAgent(id, true); return; }
-        applyAgent(snapshot, true);
-      },
+      restored: (id) => reconcileAgent(id, true),
       error: (id, error) => console.error('token-ledger: timeline subscription failed', id, error),
     });
+    // Re-read one agent by ID; a ref resolves agents that lists may hide.
+    const reconcileAgent = async (id: string, restored: boolean) => {
+      const revision = agentRevisions.get(id);
+      const handle = paseo.agents.ref(id);
+      await handle.refresh();
+      if (stopped || agentRevisions.get(id) !== revision) return;
+      const snapshot = handle.current();
+      if (!snapshot) { catalog.remove(id); retireAgent(id, restored); return; }
+      applyAgent(snapshot, restored);
+    };
     const applyAgent = (agent: PaseoAgent, restored = false) => {
       restored = needsReconcile.delete(agent.id) || restored;
       bump(agent.id);
@@ -199,7 +215,18 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         onUpdate: (update) => {
           if (stopped) return;
           if (update.kind === 'upsert') applyAgent(update.agent);
-          else { bump(update.agentId); catalog.remove(update.agentId); retireAgent(update.agentId); }
+          else {
+            // A remove can mean the agent left this list's filter (such as a
+            // background workspace), not that it was archived or deleted.
+            const id = update.agentId;
+            bump(id);
+            const revision = agentRevisions.get(id);
+            void reconcileAgent(id, false).catch((error) => {
+              console.error('token-ledger: could not confirm agent removal', id, error);
+              if (stopped || agentRevisions.get(id) !== revision) return;
+              catalog.remove(id); retireAgent(id);
+            });
+          }
         },
         onError: (error) => {
           for (const [id, state] of agents) { needsReconcile.add(id); markUsageGap(state); }
@@ -249,47 +276,42 @@ export function stopTracker(): Promise<void> {
 function inFlightFor(agentId: string): InFlight | null {
   const state = agents.get(agentId);
   const open = state?.open;
-  if (!open) return null;
-  const semantics = usageSemantics(open.provider, open.model);
-  let input: number | null = null;
-  let rawInput: number | null = null;
-  let cached: number | null = null;
-  let cacheWrite: number | null = null;
-  let output: number | null = null;
-  const observations = providerSemantics(open.provider).tokens === "request" ? open.observations : open.observations.slice(-1);
-  for (const observation of observations) {
-    const fresh = freshInput(semantics, observation.input, observation.cached, observation.cacheWrite);
-    if (observation.input !== null) rawInput = (rawInput ?? 0) + observation.input;
-    if (fresh !== null) input = (input ?? 0) + fresh;
-    if (observation.cached !== null) cached = (cached ?? 0) + observation.cached;
-    if (observation.cacheWrite != null) cacheWrite = (cacheWrite ?? 0) + observation.cacheWrite;
-    if (observation.output !== null) output = (output ?? 0) + observation.output;
-  }
-  const usage = open.lastUsage;
-  const estimated = estimateUsageCost({
-    provider: open.provider,
-    model: open.model,
-    input: rawInput,
-    cached,
-    cacheWrite,
-    output,
-    ...(providerSemantics(open.provider).tokens === "request"
-      ? { requests: open.observations.map(({ cost, ...tokens }) => tokens) }
-      : {}),
-  });
+  if (!state || !open) return null;
+  const record = finalizeTurn({ agentId, turnId: open.turnId, provider: open.provider, model: open.model,
+    startedAt: open.startedAt, endedAt: new Date().toISOString(), status: 'unknown',
+    observations: open.observations, finalUsage: null, prevSessionCostUsd: state.prevSessionCostUsd });
+  if (open.usageGap) record.usageGap = true;
+  if (state.costBaselineUncertain) record.costUsd = null;
+  const row = enrichTurn(record, 1);
   return {
     ...(open.usageGap ? { usageGap: true } : {}),
-    turnId: open.turnId,
-    startedAt: open.startedAt,
-    modelCalls: open.observations.length,
-    input,
-    cached,
-    cacheWrite,
-    output,
-    effectiveCostUsd: estimated.effectiveCostUsd,
-    costSource: estimated.costSource,
-    ctxUsed: typeof usage?.contextWindowUsedTokens === "number" ? usage.contextWindowUsedTokens : null,
-    ctxMax: typeof usage?.contextWindowMaxTokens === "number" ? usage.contextWindowMaxTokens : null,
+    turnId: open.turnId, startedAt: open.startedAt, modelCalls: row.modelCalls,
+    tokenScope: row.tokenScope, promptTokens: row.promptTokens, partialCost: row.partialCost,
+    pricingWarning: row.pricingWarning,
+    input: row.input, cached: row.cached, cacheWrite: row.cacheWrite, output: row.output,
+    effectiveCostUsd: row.effectiveCostUsd, costSource: row.costSource,
+    ctxUsed: open.lastUsage?.contextWindowUsedTokens ?? null,
+    ctxMax: open.lastUsage?.contextWindowMaxTokens ?? null,
+  };
+}
+
+function usageSnapshotFor(agentId: string): UsageSnapshot | null {
+  const state = agents.get(agentId);
+  const previous = lastRecordForAgent(agentId);
+  const provider = state?.provider ?? previous?.provider ?? null;
+  const scope = tokenScope({ provider });
+  if (scope === 'turn') return null;
+  const compatible = !state?.sessionId || state.sessionId === previous?.sessionId;
+  const observation = state?.lastObservation ?? (compatible && previous ? {
+    input: previous.input, cached: previous.cached, cacheWrite: previous.cacheWrite,
+    output: previous.output, cost: previous.sessionCostUsd,
+  } : null);
+  if (!observation) return null;
+  return {
+    scope, input: freshInput(usageSemantics(provider), observation.input, observation.cached, observation.cacheWrite),
+    cached: observation.cached, cacheWrite: observation.cacheWrite ?? null, output: observation.output,
+    reportedCostUsd: observation.cost,
+    observedAt: state?.lastObservedAt ?? previous?.endedAt ?? null,
   };
 }
 
@@ -311,6 +333,7 @@ export async function handleSync(
     records: input.knownRecordsRevision === recordsRevision ? [] : (group?.rows.slice(0, input.limit ?? 50) ?? []),
     summary,
     ctx: agents.get(input.agentId)?.lastCtx ?? null,
+    usageSnapshot: usageSnapshotFor(input.agentId),
   };
 }
 
@@ -340,14 +363,18 @@ export async function handleOverview(input: { since?: string }, context: { paseo
     // A range lists only the agents that used tokens in it or that work now.
     if (since !== null && summary.turns === 0 && open === null) continue;
     totals.turns += summary.turns;
-    totals.input += summary.input;
-    totals.cached += summary.cached;
+    if (summary.input !== null) totals.input = (totals.input ?? 0) + summary.input;
+    if (summary.cached !== null) totals.cached = (totals.cached ?? 0) + summary.cached;
     if (summary.cacheWrite != null) totals.cacheWrite = (totals.cacheWrite ?? 0) + summary.cacheWrite;
-    totals.output += summary.output;
+    if (summary.output !== null) totals.output = (totals.output ?? 0) + summary.output;
     if (summary.costUsd !== null) totals.costUsd = (totals.costUsd ?? 0) + summary.costUsd;
     if (summary.effectiveCostUsd !== null) totals.effectiveCostUsd = (totals.effectiveCostUsd ?? 0) + summary.effectiveCostUsd;
     totals.estimatedTurns += summary.estimatedTurns;
     totals.unpricedTurns += summary.unpricedTurns;
+    totals.unmeasuredTurns += summary.unmeasuredTurns;
+    totals.incompleteTurns += summary.incompleteTurns;
+    totals.partialCostTurns += summary.partialCostTurns;
+    totals.pricingWarningTurns += summary.pricingWarningTurns;
     const row: AgentUsageRow = {
       agentId,
       title: snapshot?.title ?? null,
