@@ -89,7 +89,7 @@ Open any agent and pick the **TokenLedger** panel. Server lifecycle hooks start 
 
 ## Settings
 
-Open **Settings → Plugins → token-ledger → TokenLedger** on the selected host:
+Open the gear on the overview, the **Open TokenLedger Settings** command, or **Settings → Plugins → token-ledger → TokenLedger** on the selected host:
 
 - **Timeline summaries** controls summaries for newly finished turns; existing rows remain intact.
 - **OpenRouter reference prices** controls both cached reference prices and background catalog refresh.
