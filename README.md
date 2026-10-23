@@ -42,7 +42,7 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 ## Compatibility
 
-TokenLedger **v0.8.0** requires **Paseo 0.11.0 or newer**, on both the daemon and the app, without an upper version limit. It uses the screen and sidebar footer APIs that Paseo 0.11 added. The verified hosts are **0.11.1** and **0.12.0**, including agents in Paseo 0.12 background workspaces; allowing newer versions is not a claim that every future release has been tested. SDK development dependencies are pinned to 0.11.1, with CI checks against the minimum, the pin, 0.12.0, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
+TokenLedger **v0.8.1** requires **Paseo 0.11.0 or newer**, on both the daemon and the app, without an upper version limit. It uses the screen and sidebar footer APIs that Paseo 0.11 added. The verified hosts are **0.11.1** and **0.12.0**, including agents in Paseo 0.12 background workspaces; allowing newer versions is not a claim that every future release has been tested. SDK development dependencies are pinned to 0.11.1, with CI checks against the minimum, the pin, 0.12.0, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
 
 Paseo 0.9.1–0.10.x users should stay on `v0.6.3`; Paseo 0.8 users on `v0.5.1`; Paseo 0.7 users on `v0.3.1`. Existing `ledger.jsonl` records remain readable; no migration or deletion is required. See the [v0.6.0 release notes](docs/releases/v0.6.0.md) for the 0.9.1 migration details.
 
@@ -67,7 +67,7 @@ Or paste either source into **Settings → Plugins → Plugin source**.
 To install a tagged release from GitHub instead:
 
 ```bash
-paseo plugin add github:stv1024/token-ledger --ref v0.8.0
+paseo plugin add github:stv1024/token-ledger --ref v0.8.1
 ```
 
 Since Paseo 0.11, a bare `owner/name` source means the official plugin registry, which rejects `--ref`. Keep the `github:` prefix for Git installs. On Paseo 0.9.1–0.10.x, use `paseo plugin add stv1024/token-ledger --ref v0.6.3`.

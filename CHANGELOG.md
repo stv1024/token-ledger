@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.8.1 (2026-10-23) — custom price overrides and provider `extends`
+
+Requires Paseo **0.11.0 or newer**. Existing ledger records and custom prices remain compatible. See the [release notes](docs/releases/v0.8.1.md).
 
 - Add a **Custom prices override reported costs** setting (off by default). A matching `pricing.json` price replaces the runtime-reported cost, which can be a list-price fallback for local or unbilled models. Reference prices never replace reported costs. The reported value stays in the ledger file (#1).
 - Recognize custom providers that declare `extends: "claude"` or `extends: "codex"` in the daemon config. Their turns now use the base harness's usage and cost semantics instead of unknown-scope snapshots. New records store the resolved harness; earlier records of such providers stay unknown-scope snapshots (#1).
