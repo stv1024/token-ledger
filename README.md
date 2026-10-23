@@ -32,7 +32,7 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 **Sidebar** — a **TokenLedger** row in the sidebar footer shows today's cost (or tokens when no price is known), with an activity icon while a turn is running. "Today" starts at local midnight on the device that shows it.
 
-**Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**. The sidebar row opens it on Today; the command center opens All time. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
+**Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**. The sidebar row opens it on Today; the command center opens All time. Switching ranges stays on the same screen. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
 
 <p align="center">
   <img src="images/screenshot-overview.png" alt="TokenLedger Today overview with synthetic data, excluded snapshots and a custom-price migration warning" width="720">
@@ -42,11 +42,11 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 ## Compatibility
 
-TokenLedger **v0.7.0** requires **Paseo 0.11.0 or newer**, on both the daemon and the app, without an upper version limit. It uses the screen and sidebar footer APIs that Paseo 0.11 added. The verified host is **0.11.1**; allowing newer versions is not a claim that every future release has been tested. SDK development dependencies are pinned to 0.11.1, with CI checks against the minimum, the pin, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
+TokenLedger **v0.8.0** requires **Paseo 0.11.0 or newer**, on both the daemon and the app, without an upper version limit. It uses the screen and sidebar footer APIs that Paseo 0.11 added. The verified hosts are **0.11.1** and **0.12.0**, including agents in Paseo 0.12 background workspaces; allowing newer versions is not a claim that every future release has been tested. SDK development dependencies are pinned to 0.11.1, with CI checks against the minimum, the pin, 0.12.0, and the latest published SDK. See the [compatibility policy and verification notes](docs/compatibility.md).
 
 Paseo 0.9.1–0.10.x users should stay on `v0.6.3`; Paseo 0.8 users on `v0.5.1`; Paseo 0.7 users on `v0.3.1`. Existing `ledger.jsonl` records remain readable; no migration or deletion is required. See the [v0.6.0 release notes](docs/releases/v0.6.0.md) for the 0.9.1 migration details.
 
-The unreleased accounting fixes were also exercised on Paseo 0.11.2. After updating, reload/reopen the client so it uses the new nullable summary fields, scope metadata and pricing warnings. Existing JSONL records are reinterpreted on read, not rewritten. The screenshots above use synthetic data on an isolated host.
+The v0.8.0 accounting fixes were also exercised on Paseo 0.11.2. After updating, reload/reopen the client so it uses the new nullable summary fields, scope metadata and pricing warnings. Existing JSONL records are reinterpreted on read, not rewritten. The screenshots above use synthetic data on an isolated host.
 
 ## Install
 
@@ -67,7 +67,7 @@ Or paste either source into **Settings → Plugins → Plugin source**.
 To install a tagged release from GitHub instead:
 
 ```bash
-paseo plugin add github:stv1024/token-ledger --ref v0.7.0
+paseo plugin add github:stv1024/token-ledger --ref v0.8.0
 ```
 
 Since Paseo 0.11, a bare `owner/name` source means the official plugin registry, which rejects `--ref`. Keep the `github:` prefix for Git installs. On Paseo 0.9.1–0.10.x, use `paseo plugin add stv1024/token-ledger --ref v0.6.3`.

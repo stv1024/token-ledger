@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.8.0 (2026-10-23) — Paseo 0.12 background workspaces and accounting accuracy
+
+Requires Paseo **0.11.0 or newer**; verified on 0.11.1 and 0.12.0. Existing ledger records are reinterpreted on read, not rewritten; existing custom price files are kept. Reload or reopen the app after updating. See the [release notes](docs/releases/v0.8.0.md).
 
 - Switch overview ranges inside the screen instead of pushing a navigation entry per click; the screen title is now fixed. Thanks to @ChtJT (#4, #5).
 - Track agents in Paseo 0.12 background workspaces. Paseo 0.12 hides them from default agent and workspace lists, so their turns were closed as canceled with no usage and their workspace names were missing. Catalog lists now request background workspaces and fall back to unfiltered lists on hosts that predate them. A catalog removal is confirmed by agent ID before the agent's open turn is settled.

@@ -11,3 +11,5 @@ DEVELOPMENT_PLAN.md
 AGENTS.local.md
 # local Paseo agent settings (per-user)
 paseo.json
+# private research notes (local paths, provider names, ledger data)
+docs/private/

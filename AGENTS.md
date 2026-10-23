@@ -6,6 +6,12 @@ TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`�
 
 Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
 
+## 隐私红线
+
+- **禁止发布 Stephen 私人网关的任何信息或数据**：网关名称、provider/model 名（含本机 provider 配置名）、价格表、汇率、额度、账号、端点，以及真实账本数据、agent/会话 ID、本机路径。范围包括源码、测试、文档、截图、commit message、PR/issue/Release 文本和 npm 包。
+- **新功能不能依赖私人网关**：只针对公开 provider/harness 的已验证语义设计；不内置私有价格种子或固定汇率。测试和文档用合成数据（如 `acme-web`、`openai/gpt-5`）。
+- 私人网关只用于本机实测，相关事项写在 `AGENTS.local.md`；含真实数据的调研笔记放 `docs/private/`（已 gitignore）。提交前 `git grep -i` 检查网关名和本机路径，发版前用 `npm pack --dry-run` 核对包内容。
+
 ## 开发循环
 
 ```bash
