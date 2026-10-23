@@ -7,7 +7,7 @@ export const preferences = defineSettings({
     timelineSummaries: z.boolean().default(true),
     openRouterPricing: z.boolean().default(true),
     builtinPricing: z.boolean().default(true),
-    preferEstimates: z.boolean().default(false),
+    customPricesOverride: z.boolean().default(false),
     refreshInterval: z.enum(['normal', 'relaxed']).default('normal'),
   }),
 });
