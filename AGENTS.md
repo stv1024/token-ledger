@@ -41,6 +41,8 @@ paseo agent archive <id>                                  # 测完归档，别�
 - usage 语义（2026-09-04 实测）：Claude 轮末 usage 是**逐轮**汇总、`totalCostUsd` 是**会话累计**（所以记录里存 delta + raw 两份）；Codex 每次模型请求报一次 `last` 值，多请求轮靠去重求和。快照会把上一轮旧 usage 回放进新一轮——tracker 用 agent 级 `lastObservation` 基线挡掉。
 - **Paseo 0.11.2 仍丢弃 cache creation**：Claude `buildResultUsage` 只映射普通输入、cache read、输出与 SDK 报告费用。缺失不等于零；命中率必须有完整分母。`costUsd` 只是运行器报告费用，不保证等于网关实际扣款；分项估算残差不得反推 write token。
 - **输入口径只按已验证 harness，不按模型回退**：Codex input 包含 read/write；Claude 和 OMP input 已与缓存分开。`usageSemantics(provider)` 不接受 model。RPC 的 IN 是减掉 read 和已知 write 的未缓存输入，write 缺失时 Codex IN 仍可能含未分类写入；未知 provider 原样显示并排除轮次合计。磁盘原始值不重写。
+- **自定义 provider 按 `extends` 认 harness**（v0.8.1）：`server/providers.ts` 用 `paseo.config.get()`（0.11.0 起有）读 `providers[name].extends`，30 秒节流，失败保留按名识别；`harnessOf()` 沿链解析。新记录存 `harness`，旧记录不回填，以后配置变化不改写已有记录的解读。语义用 harness，价格匹配（`providers` 作用域）仍用真实 provider 名。
+- **`customPricesOverride` 只让 `pricing.json` 价格替换报告费用**：OpenRouter/内置价格永不替换，因为它们缺 cache write，报告的 Claude 费用包含它。报告值始终留在磁盘。
 - **turnId 不是全局唯一的**（2026-09-07 从 ledger.jsonl 实测）：Paseo 的 turnId 形如 `foreground-turn-N`，agent/daemon 会话重启后从 1 重新计数。任何以 `agentId:turnId` 当唯一键的地方都会跨会话冲突——曾导致面板 React key 重复、渲染出幽灵重复行。现在记录 id 拼入 `endedAt`（aggregate.ts），面板行 key 用 `seq`（兼容旧格式的历史记录）。新代码需要唯一键时同样别只用 turnId。
 - **终止事件后快照可能回放 activeTurn**（同日实测，曾造成 3ms 内同一 turn 落库两条）：turn_completed 之后紧跟的 agent_update 快照仍带着刚结束的 turn，noteUsage 若据此重开 open turn，下个终止事件就会重复落库。tracker 用 `lastClosedTurnId` 挡掉（新轮保留旧 ID 以屏蔽迟到事件；provider session 确认改变时重置）。改 turn 生命周期逻辑时注意 timeline 事件流和快照流是两条异步通道，顺序无保证。
 
