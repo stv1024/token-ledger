@@ -2,6 +2,10 @@
 
 TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
+## UI 设计理念
+
+Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+
 ## 开发循环
 
 ```bash
