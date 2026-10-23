@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CostSource, TurnRecord, TurnRow } from "../shared/ledger.ts";
 import { canonicalModel, costBreakdownWithPricing, knownCost, modelPricing, partialCost, type CostBreakdown, type ModelPricing } from "../shared/pricing.ts";
-import { freshInput, promptTokens, tokenScope, usageSemantics } from "../shared/semantics.ts";
+import { freshInput, promptTokens, providerBasesRevision, tokenScope, usageSemantics } from "../shared/semantics.ts";
 import { getPreferences, preferencesRevision } from './preferences.ts';
 
 type PriceTier = ModelPricing & { upToInputTokens?: number };
@@ -64,7 +64,7 @@ let overridePrices: PriceEntry[] = [];
 let openRouterPrices: OpenRouterPrice[] = [];
 let loadPromise: Promise<void> | null = null;
 let revision = 0;
-export const pricingRevision = () => `${revision}:${preferencesRevision()}`;
+export const pricingRevision = () => `${revision}:${preferencesRevision()}:${providerBasesRevision()}`;
 
 async function loadOverrides(): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true });
@@ -195,6 +195,7 @@ function resolvePricing(provider: string | null, model: string | null, prompt: n
 }
 
 type PriceableUsage = Pick<TurnRecord, "provider" | "model" | "input" | "cached" | "cacheWrite" | "output"> & {
+  harness?: TurnRecord['harness'];
   requests?: TurnRecord['requests'];
   tokenScope?: TurnRecord['tokenScope'];
 };
@@ -208,15 +209,16 @@ export function estimateUsageCost(usage: PriceableUsage): {
   pricingWarning: string | null;
 } {
   const unavailable = { effectiveCostUsd: null, costSource: null, costBreakdown: null, partialCost: true, pricingWarning: null };
-  if (tokenScope(usage) !== 'turn' || !usageSemantics(usage.provider)) return unavailable;
-  const semantics = usageSemantics(usage.provider);
+  const harness = usage.harness ?? usage.provider;
+  const semantics = usageSemantics(harness);
+  if (tokenScope(usage) !== 'turn' || !semantics) return unavailable;
   const requests = usage.requests?.length ? usage.requests : [usage];
   let breakdown: CostBreakdown | null = null;
   let source: Exclude<CostSource, 'reported'> | null = null;
   let incomplete = false;
   let pricingWarning: string | null = null;
   for (const request of requests) {
-    const resolved = resolvePricing(usage.provider, usage.model, promptTokens(usage.provider, request));
+    const resolved = resolvePricing(usage.provider, usage.model, promptTokens(harness, request));
     if (!resolved) { incomplete = true; continue; }
     if ('warning' in resolved) { pricingWarning ??= resolved.warning; incomplete = true; continue; }
     const input = freshInput(semantics, request.input, request.cached, request.cacheWrite);
@@ -237,9 +239,13 @@ export function estimateUsageCost(usage: PriceableUsage): {
 
 export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
   const scope = tokenScope(record);
-  const input = freshInput(usageSemantics(record.provider), record.input, record.cached, record.cacheWrite);
+  const harness = record.harness ?? record.provider;
+  const input = freshInput(usageSemantics(harness), record.input, record.cached, record.cacheWrite);
   const estimated = estimateUsageCost(record);
-  const reported = scope === 'turn' ? record.costUsd : null;
+  const runtime = scope === 'turn' ? record.costUsd : null;
+  // Runtimes can report list-price fallbacks for unbilled local models; the raw value stays on disk.
+  const overridden = getPreferences().customPricesOverride && estimated.costSource === 'override' && estimated.effectiveCostUsd !== null;
+  const reported = overridden ? null : runtime;
   const breakdown = estimated.costBreakdown && reported !== null
     ? { ...estimated.costBreakdown, otherUsd: reported - estimated.effectiveCostUsd! }
     : estimated.costBreakdown;
@@ -247,7 +253,7 @@ export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
     ...record, input, seq, tokenScope: scope,
     // Historical session/unknown rows counted snapshots, not model calls.
     modelCalls: scope === 'turn' ? record.modelCalls : null,
-    promptTokens: promptTokens(record.provider, record),
+    promptTokens: promptTokens(harness, record),
     incompleteUsage: scope !== 'turn' || record.quality !== 'exact' || !!record.usageGap
       || input === null || record.cached === null || record.cacheWrite == null || record.output === null,
     partialCost: reported === null && (estimated.partialCost || record.quality !== 'exact' || !!record.usageGap),

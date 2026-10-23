@@ -8,6 +8,8 @@ export const TurnRecordSchema = z.object({
   turnId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
+  /** Base harness of a custom provider declared with `extends`, resolved when recorded. */
+  harness: z.string().nullable().optional(),
   /** Omitted in v1 history; inferred only from verified harness semantics. */
   tokenScope: z.enum(['turn', 'session', 'unknown']).optional(),
   /** Provider session identity, when observed; optional for pre-0.8 records. */

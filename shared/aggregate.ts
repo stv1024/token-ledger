@@ -1,4 +1,4 @@
-import { providerSemantics, tokenScope } from "./semantics.ts";
+import { harnessOf, providerSemantics, tokenScope } from "./semantics.ts";
 import type { TurnRecord } from "./ledger.ts";
 
 /** Reducer input. Paseo 0.8 exposes these fields except cacheWriteInputTokens. */
@@ -126,6 +126,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     args.startedAt !== null ? Math.max(0, Date.parse(args.endedAt) - Date.parse(args.startedAt)) : null;
 
   const scope = tokenScope(args);
+  const harness = harnessOf(args.provider);
   return {
     v: 1,
     // endedAt is part of the id because Paseo turnIds ("foreground-turn-N")
@@ -134,6 +135,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     agentId: args.agentId,
     turnId: args.turnId,
     provider: args.provider,
+    ...(harness !== args.provider ? { harness } : {}),
     tokenScope: scope,
     model: args.model,
     startedAt: args.startedAt,

@@ -31,6 +31,7 @@ export function TokenLedgerSettings({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSwitch label="OpenRouter reference prices" hint="Use cached reference prices and refresh the public catalog in the background." value={settings.values.openRouterPricing} disabled={settings.saving} onValueChange={(openRouterPricing) => save({ openRouterPricing })} />
           <SettingsSwitch label="Built-in fallback prices" hint="Use known model prices when no custom or OpenRouter price matches." value={settings.values.builtinPricing} disabled={settings.saving} onValueChange={(builtinPricing) => save({ builtinPricing })} />
+          <SettingsSwitch label="Custom prices override reported costs" hint="For local or unbilled models. Scope entries with providers in pricing.json." value={settings.values.customPricesOverride} disabled={settings.saving} onValueChange={(customPricesOverride) => save({ customPricesOverride })} />
           <SettingsRow label="Custom prices" hint="Edit pricing.json in the TokenLedger data folder on this host. Changes are picked up within 30 seconds of the next usage request." />
         </SettingsCard>
       </SettingsSection>

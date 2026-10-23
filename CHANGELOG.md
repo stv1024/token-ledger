@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a **Custom prices override reported costs** setting (off by default). A matching `pricing.json` price replaces the runtime-reported cost, which can be a list-price fallback for local or unbilled models. Reference prices never replace reported costs. The reported value stays in the ledger file (#1).
+- Recognize custom providers that declare `extends: "claude"` or `extends: "codex"` in the daemon config. Their turns now use the base harness's usage and cost semantics instead of unknown-scope snapshots. New records store the resolved harness; earlier records of such providers stay unknown-scope snapshots (#1).
+
 ## v0.8.0 (2026-10-23) — Paseo 0.12 background workspaces and accounting accuracy
 
 Requires Paseo **0.11.0 or newer**; verified on 0.11.1 and 0.12.0. Existing ledger records are reinterpreted on read, not rewritten; existing custom price files are kept. Reload or reopen the app after updating. See the [release notes](docs/releases/v0.8.0.md).

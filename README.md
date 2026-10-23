@@ -94,11 +94,12 @@ Open **Settings → Plugins → token-ledger → TokenLedger** on the selected h
 - **Timeline summaries** controls summaries for newly finished turns; existing rows remain intact.
 - **OpenRouter reference prices** controls both cached reference prices and background catalog refresh.
 - **Built-in fallback prices** controls estimates when neither custom nor enabled OpenRouter pricing matches.
+- **Custom prices override reported costs** (off by default) uses a matching `pricing.json` price instead of the runtime-reported cost, for example for local models that a runtime prices at a list-price fallback. Add `providers` to an entry to limit it to one provider. OpenRouter and built-in prices never replace a reported cost. The reported value stays in the ledger file, so turning the option off restores it.
 - **Refresh frequency** selects normal (3 seconds active / 30 seconds idle) or relaxed (10 / 60 seconds) fallback polling. Live updates still trigger refreshes.
 
-Settings apply without a plugin reload and are shared by clients of that host. Reported costs and `pricing.json` overrides always retain priority. These preferences do not alter ledger retention or erase history.
+Settings apply without a plugin reload and are shared by clients of that host. By default, reported costs and `pricing.json` overrides retain priority. These preferences do not alter ledger retention or erase history.
 
-All three switches default to on, and refresh frequency defaults to normal.
+The other three switches default to on, and refresh frequency defaults to normal.
 
 ## How turns are measured
 
@@ -112,9 +113,9 @@ A "turn" is one user message through to `turn_completed`, `turn_failed`, or `tur
 | Unverified harness | latest reported snapshot | unknown; excluded from per-turn totals and prices |
 | Nothing reported | unknown, not zero | unavailable |
 
-Counting conventions are selected by verified harness/provider identity, never by the model name. OMP input is already exclusive of cache; Codex input is inclusive. “IN” is uncached input after subtracting cache reads and known writes; if writes are omitted, Codex IN may still include unclassified writes. Unknown provider values stay as reported, without guessed normalization.
+Counting conventions are selected by verified harness/provider identity, never by the model name. A custom provider that declares `extends: "claude"` or `extends: "codex"` in the daemon config follows its base harness; new records store the resolved harness. OMP input is already exclusive of cache; Codex input is inclusive. “IN” is uncached input after subtracting cache reads and known writes; if writes are omitted, Codex IN may still include unclassified writes. Unknown provider values stay as reported, without guessed normalization.
 
-For attributable turn costs, the order is runtime-reported cost, local override, OpenRouter reference, then built-in fallback. Claude session-cost deltas use the known baseline; a lower counter alone does not prove a session reset. A runtime's reported cost can itself be an estimate: it is not a verified invoice, and custom reference pricing does not replace it. Residuals do not identify missing tokens or billing categories.
+For attributable turn costs, the order is runtime-reported cost, local override, OpenRouter reference, then built-in fallback; **Custom prices override reported costs** puts a matching local override first. Claude session-cost deltas use the known baseline; a lower counter alone does not prove a session reset. A runtime's reported cost can itself be an estimate: it is not a verified invoice, and custom pricing replaces it only when **Custom prices override reported costs** is on. Residuals do not identify missing tokens or billing categories.
 
 Estimated costs are marked `≈`; missing components/rates or uncertain request coverage add `partial`. Summaries expose unknown-cost turns rather than presenting the known subtotal as a complete bill. Codex request observations are priced separately; legacy records without requests use the aggregate as an explicitly partial estimate. A tiered price cannot be selected when the complete prompt size is unknown. Per-request routed model identities are not exposed, so reference pricing uses the recorded selected model, not a claim of the actual billed model.
 
