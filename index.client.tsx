@@ -10,9 +10,11 @@ import { UsageTimelineRow } from "./client/timeline.tsx";
 import { UsageTimelineSchema, USAGE_TIMELINE_KIND } from "./shared/timeline.ts";
 import { TokenLedgerSettings } from './client/settings.tsx';
 
+const SETTINGS_SCREEN = 'preferences';
+
 export default function contribute(client: PluginClientContext) {
   const placement = createPanelPlacement();
-  client.addSettingsScreen({ id: 'preferences', title: 'TokenLedger', icon: 'Coins', Component: TokenLedgerSettings });
+  client.addSettingsScreen({ id: SETTINGS_SCREEN, title: 'TokenLedger', icon: 'Coins', Component: TokenLedgerSettings });
   client.addTimelineRenderer({ kind: USAGE_TIMELINE_KIND, version: 1, schema: UsageTimelineSchema, Component: UsageTimelineRow });
   client.addWorkspacePanel({
     id: "ledger",
@@ -25,7 +27,7 @@ export default function contribute(client: PluginClientContext) {
   client.addScreen({
     id: OVERVIEW_SCREEN,
     title: "TokenLedger",
-    Component: TokenLedgerOverview,
+    Component: (props) => <TokenLedgerOverview {...props} openSettings={() => client.openSettings(SETTINGS_SCREEN)} />,
   });
   client.addSidebarFooterItem({ id: "ledger-today", title: "TokenLedger", Component: LedgerSidebarItem });
   client.addCommandCenterItem({
@@ -46,6 +48,16 @@ export default function contribute(client: PluginClientContext) {
     context: "global",
     onSelect({ openScreen }) {
       openScreen({ screenId: OVERVIEW_SCREEN });
+    },
+  });
+  client.addCommandCenterItem({
+    id: "open-ledger-settings",
+    title: "Open TokenLedger Settings",
+    icon: "Settings",
+    keywords: ["token", "usage", "cost", "ledger", "settings", "pricing"],
+    context: "global",
+    onSelect({ openSettings }) {
+      openSettings(SETTINGS_SCREEN);
     },
   });
   return contributePills(client, placement);

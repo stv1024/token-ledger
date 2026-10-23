@@ -1,7 +1,7 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { type PluginScreenProps } from "@getpaseo/plugin/client";
-import { ScrollView } from "@getpaseo/plugin/client/react-native";
+import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useState } from "react";
 import { useOverview } from "./data.ts";
 import { Pressable, Text, View } from "react-native";
@@ -105,7 +105,8 @@ export function TokenLedgerOverview({
   layout,
   navigation,
   params,
-}: PluginScreenProps) {
+  openSettings,
+}: PluginScreenProps & { openSettings: () => void }) {
   const paramRange = parseRange(params.range);
   const [range, setRange] = useState(paramRange);
   useEffect(() => setRange(paramRange), [paramRange]);
@@ -130,7 +131,20 @@ export function TokenLedgerOverview({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      <RangePicker range={range} theme={theme} onRange={setRange} />
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <RangePicker range={range} theme={theme} onRange={setRange} />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="TokenLedger settings"
+          hitSlop={8}
+          onPress={openSettings}
+          style={({ pressed }) => ({ padding: 4, borderRadius: 6, backgroundColor: pressed ? theme.colors.surface1 : "transparent" })}
+        >
+          <Icon name="Settings" size={16} color={theme.colors.foregroundMuted} />
+        </Pressable>
+      </View>
       {error ? <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>{String(error)}</Text> : null}
       {data ? (
         <>

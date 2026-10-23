@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add a gear to the overview and an **Open TokenLedger Settings** command. Both open the plugin settings page, which is otherwise several levels deep.
+
 ## v0.8.1 (2026-10-23) — custom price overrides and provider `extends`
 
 Requires Paseo **0.11.0 or newer**. Existing ledger records and custom prices remain compatible. See the [release notes](docs/releases/v0.8.1.md).
