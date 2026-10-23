@@ -239,7 +239,9 @@ export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
   const scope = tokenScope(record);
   const input = freshInput(usageSemantics(record.provider), record.input, record.cached, record.cacheWrite);
   const estimated = estimateUsageCost(record);
-  const reported = scope === 'turn' ? record.costUsd : null;
+  const runtime = scope === 'turn' ? record.costUsd : null;
+  // Runtimes can report list-price fallbacks for unbilled local models; the raw value stays on disk.
+  const reported = getPreferences().preferEstimates && estimated.effectiveCostUsd !== null ? null : runtime;
   const breakdown = estimated.costBreakdown && reported !== null
     ? { ...estimated.costBreakdown, otherUsd: reported - estimated.effectiveCostUsd! }
     : estimated.costBreakdown;

@@ -6,11 +6,12 @@ Token counts come from the provider. Claude terminal aggregates and observed Cod
 
 The pill distinguishes known session snapshots (`Session ≈4.12M tok`), unknown-scope snapshots, waiting for usage and no reported usage. Old timeline cards without scope metadata are labelled as legacy; their ledger inclusion is not guessed from the card.
 
-The plugin settings page on each host has four options:
+The plugin settings page on each host has five options:
 
 - **Timeline summaries** turns the usage summary after each new turn on or off. Existing summaries stay.
 - **OpenRouter reference prices** lets the plugin download the public model price list from `openrouter.ai` in the background and cache it for 24 hours. The request carries no tokens, prompts, or usage data. Turn it off to stop the download and stop using those prices.
 - **Built-in fallback prices** controls estimates when no custom or OpenRouter price matches a model.
+- **Prefer price estimates** uses a matching custom or reference price instead of the cost the runtime reports. Use it for local or unbilled models. It is off by default.
 - **Refresh frequency** selects normal or relaxed polling. Live updates still refresh the views immediately.
 
 The ledger is a JSON Lines file on the daemon host, `~/.paseo/plugins/token-ledger/` (or under `PASEO_HOME`), retaining 2,000 records. It stores observed usage, timestamps, identity, scope and quality, not prompts, responses, tool arguments or credentials. Older records remain readable and are reinterpreted without rewriting them. `pricing.json` starts empty and preserves your existing prices. Full model IDs and explicit aliases prevent unrelated routes from sharing a guessed price. History does not sync between hosts.

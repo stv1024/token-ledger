@@ -25,7 +25,7 @@ test('settings changes win over a stale read, update pricing immediately, and pr
   const pricing = await import('./pricing.ts');
   const { TimelinePublisher } = await import('./timeline.ts');
   try {
-    notify({ status: 'ready', revision: 'new', values: { ...DEFAULT_PREFERENCES, timelineSummaries: false, openRouterPricing: false, builtinPricing: false } });
+    notify({ status: 'ready', revision: 'new', values: { ...DEFAULT_PREFERENCES, timelineSummaries: false, openRouterPricing: false, builtinPricing: false, preferEstimates: true } });
     resolveRead({ status: 'ready', revision: 'old', values: DEFAULT_PREFERENCES });
     await settings.ready;
     assert.equal(getPreferences().openRouterPricing, false);
@@ -36,7 +36,13 @@ test('settings changes win over a stale read, update pricing immediately, and pr
     assert.equal(pricing.estimateUsageCost({ ...usage, model: 'custom' }).effectiveCostUsd, 9);
     const { finalizeTurn } = await import('../shared/aggregate.ts');
     const record = finalizeTurn({ agentId: 'a', turnId: 't', provider: 'claude', model: 'claude-opus-5.5', startedAt: null, endedAt: new Date().toISOString(), status: 'completed', observations: [], finalUsage: { inputTokens: 1_000_000, totalCostUsd: 2 }, prevSessionCostUsd: 0 });
+    // Preferring estimates still falls back to the reported cost when no price matches.
     assert.equal(pricing.enrichTurn(record, 1).effectiveCostUsd, 2);
+    const local = pricing.enrichTurn({ ...record, model: 'custom' }, 1);
+    assert.equal(local.effectiveCostUsd, 9);
+    assert.equal(local.costSource, 'override');
+    assert.equal(local.costUsd, null);
+    assert.equal(local.costBreakdown?.otherUsd, null);
     const publisher = new TimelinePublisher();
     publisher.publish({} as never, record); // Disabled summaries must never call the timeline API.
     await publisher.flush();
@@ -45,6 +51,7 @@ test('settings changes win over a stale read, update pricing immediately, and pr
     assert.notEqual(pricing.pricingRevision(), previous);
     assert.equal(pricing.estimateUsageCost(usage).effectiveCostUsd, 4);
     assert.equal(pricing.estimateUsageCost({ ...usage, model: 'remote' }).effectiveCostUsd, 1);
+    assert.equal(pricing.enrichTurn({ ...record, model: 'custom' }, 1).effectiveCostUsd, 2, 'reported costs win by default');
   } finally {
     await settings.dispose();
     if (oldHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = oldHome;
