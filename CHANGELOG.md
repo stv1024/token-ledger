@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## v0.8.2 (2026-10-28) — settings shortcut, published from CI
+
+Requires Paseo **0.11.0 or newer**. No data changes. See the [release notes](docs/releases/v0.8.2.md).
 
 - Add a gear to the overview and an **Open TokenLedger Settings** command. Both open the plugin settings page, which is otherwise several levels deep.
+- Publish to npm from GitHub Actions with npm Trusted Publishing. The package now carries provenance.
 
 ## v0.8.1 (2026-10-23) — custom price overrides and provider `extends`
 

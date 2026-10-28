@@ -101,6 +101,6 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 ## 发布
 
-仓库 `stv1024/token-ledger`。发版打 tag（如 `v0.1.1`）+ GitHub Release + `npm publish`（包名 `paseo-token-ledger`）。用户侧用 `paseo plugin add github:stv1024/token-ledger --ref <tag>` 安装（0.11 起不带 `github:` 前缀的 `owner/name` 会走官方 registry，且 registry 拒绝 `--ref`）。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。
+仓库 `stv1024/token-ledger`，npm 包名 `paseo-token-ledger`。自 v0.8.2 起由 `.github/workflows/release.yml` 用 npm Trusted Publishing 发布，不用本机 `npm publish`，也不存 npm token。发版顺序：改 `package.json`（和 `package-lock.json`）的 `version`，把 CHANGELOG 的 Unreleased 改成版本号一节，写 `docs/releases/v<版本>.md`；合并到 main 后打 tag（如 `v0.8.2`）并 push tag，workflow 跑完再建 GitHub Release。打包内容用 `npm run pack:npm` 核对。用户侧用 `paseo plugin add github:stv1024/token-ledger --ref <tag>` 安装（0.11 起不带 `github:` 前缀的 `owner/name` 会走官方 registry，且 registry 拒绝 `--ref`）。`DEVELOPMENT_PLAN.md` 是内部文档，已在 .gitignore 里，别发布。
 
 官方 registry（`getpaseo/plugins`，记录 `plugins/stv1024/token-ledger.json`）固定一个 npm 版本。发布 npm 后，bot 每天 05:17 / 17:17 UTC 自动开 bump PR，维护者审核合并后才上线；不需要再提交 issue。`OVERVIEW.md` 是 registry 详情页，随包发布；registry 校验拒绝其中出现 `paseo plugin add`、`npm install`、`npm i`。manifest 的 `icon`（包内 PNG）和 `media` 文件必须列进 package.json `files`。registry 记录里的 `listing.*` 按字段覆盖 manifest。
