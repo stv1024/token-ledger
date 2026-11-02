@@ -1,6 +1,6 @@
 {
   "name": "paseo-token-ledger",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Paseo plugin: per-turn token usage, cache counts, and cost tracking with a persistent local ledger.",
   "type": "module",
   "license": "MIT",

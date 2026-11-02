@@ -28,7 +28,7 @@ the release for Paseo 0.9.1-0.10.x hosts.
   any other type import breaks installation. Updating the host does not require
   updating these pins in lockstep.
 - **Ongoing checks:** CI runs the typecheck and existing tests against 0.11.0,
-  0.11.1, 0.12.0, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
+  0.11.1, 0.12.0, 0.14.0, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
   detect type and SDK regressions; real provider turns remain necessary to
   verify token/cost semantics and host behavior. CI failures do not silently
   rewrite the compatibility range or disable installed plugins.
@@ -48,6 +48,7 @@ exclude beta builds.
 | 0.11.1 | Installed desktop/daemon, published SDK, typecheck, 65 tests, dependency-free compile probe, plugin reload, real Claude/Codex turns, manual sidebar and overview check on 2026-10-09 | Supported by v0.7.0 |
 | 0.12.0 | Installed desktop/daemon, published SDK, typecheck and 75 tests against both the 0.11.1 pin and 0.12.0, plugin reload, real Claude turns in a background workspace (before/after control) on 2026-10-23 | Requires the background-workspace fix below; otherwise compatible |
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
+| 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Supported by v0.8.3, which also fixes the tracker journal |
 
 The 0.11.1 investigation found:
 
@@ -135,3 +136,23 @@ The 0.12.0 review compared the v0.11.2 and v0.12.0 sources:
   (alias kept until 2027-04-20), empties the deprecated `timeline` field of the
   `turn_ended` hook (TokenLedger does not read it), and applies the background
   filter to stored agents as well.
+
+The 0.13.x and 0.14.0 review found:
+
+- The plugin SDK APIs that TokenLedger uses are unchanged. Typecheck and tests
+  pass against the 0.14.0 SDK, and the plugin loads and reloads on a 0.14.0
+  daemon. 0.13 and 0.14 add file panels, translations, per-agent tools, and
+  session MCP servers; TokenLedger needs none of them.
+- `/client/react-native` is still deprecated and will be removed after
+  2027-04-20. Its `Icon` and `ScrollView` are in `/client/ui` only from 0.13.0;
+  0.11's `/client/ui` does not have them. Moving the overview, panel, and pill
+  to `/client/ui` therefore raises the minimum to 0.13.0. Do this before that
+  date, not earlier.
+- 0.14.0 releases eligible agent runtimes after one idle hour and resumes the
+  saved session on the next prompt. In Claude turns recorded after the upgrade,
+  the session-cumulative `totalCostUsd` continued across idle gaps from one hour
+  to two days, and no first turn after a gap lost its cost. A counter that falls
+  (as after a daemon restart) still gives an unknown cost, not a guess.
+- Unrelated to 0.14, the review found that the tracker journal kept every agent
+  and was rewritten in full on each checkpoint, and that a stop before tracking
+  started wrote an empty journal. Both are fixed; see the changelog.
