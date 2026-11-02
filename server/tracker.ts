@@ -25,6 +25,11 @@ const publisher = new TimelinePublisher();
 const liveRecords = new Set<string>();
 
 const agents = new Map<string, AgentState>();
+// Archived, closed, and removed agents keep their full state here until they return.
+const retired = new Map<string, AgentState>();
+let retiredDirty = false;
+// Until the journal is read, empty maps must not overwrite it (such as a stop before any start).
+let journalLoaded = false;
 let subscriptions: TimelineSubscriptions | null = null;
 const agentRevisions = new Map<string, number>();
 const needsReconcile = new Set<string>();
@@ -43,20 +48,39 @@ function checkpoint(): void {
   if (stopped || checkpointTimer) return;
   checkpointTimer = setTimeout(() => {
     checkpointTimer = null;
-    void saveJournal(agents, pendingRecords).catch((error) => console.error("token-ledger: checkpoint failed", error));
+    void saveCheckpoint().catch((error) => console.error("token-ledger: checkpoint failed", error));
   }, 250);
+}
+function saveCheckpoint(): Promise<void> {
+  if (!journalLoaded) return Promise.resolve();
+  const changed = retiredDirty;
+  retiredDirty = false;
+  return saveJournal(agents, pendingRecords, changed ? retired : undefined)
+    .catch((error) => { if (changed) retiredDirty = true; throw error; });
+}
+/** Reads without reviving a retired agent. */
+function peekState(agentId: string): AgentState | undefined {
+  return agents.get(agentId) ?? retired.get(agentId);
+}
+function moveToRetired(agentId: string): void {
+  const state = agents.get(agentId);
+  if (!state || state.open) return;
+  agents.delete(agentId);
+  retired.set(agentId, state);
+  retiredDirty = true;
+  checkpoint();
 }
 async function drainRecords(): Promise<void> {
   // Write-ahead: a crash between append and checkpoint can safely retry the
   // same immutable record ID. Failed appends remain pending for the next drain.
   const batch = [...pendingRecords.values()];
-  await saveJournal(agents, pendingRecords);
+  await saveCheckpoint();
   for (const record of batch) {
     await appendRecord(record);
     pendingRecords.delete(record.id);
     if (liveRecords.delete(record.id) && trackerApi && !stopped) publisher.publish(trackerApi, record);
   }
-  await saveJournal(agents, pendingRecords);
+  await saveCheckpoint();
 }
 function persist(record: TurnRecord | null): void {
   checkpoint();
@@ -70,7 +94,9 @@ function persist(record: TurnRecord | null): void {
 function stateFor(agentId: string): AgentState {
   let state = agents.get(agentId);
   if (!state) {
-    state = createState(lastRecordForAgent(agentId));
+    state = retired.get(agentId);
+    if (state) { retired.delete(agentId); retiredDirty = true; checkpoint(); }
+    else state = createState(lastRecordForAgent(agentId));
     agents.set(agentId, state);
   }
   return state;
@@ -123,6 +149,11 @@ function retireAgent(id: string, gap = false): void {
     const record = closeTurn(id, state, gap ? 'unknown' : 'canceled', null, new Date().toISOString());
     if (record && gap) record.source = `recovered_gap:${record.source}`;
     persist(record);
+    moveToRetired(id);
+  } else if (gap && retired.has(id)) {
+    markUsageGap(retired.get(id)!);
+    retiredDirty = true;
+    checkpoint();
   }
   subscriptions?.unwatch(id);
 }
@@ -155,11 +186,15 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
   startPromise ??= (async () => {
     await loadStore();
     const journal = await loadJournal();
+    for (const [id, state] of journal.retired) retired.set(id, state);
     for (const [id, state] of journal.states) {
+      // A crash after an agent returned can leave both copies; the live one is newer.
+      if (retired.delete(id)) retiredDirty = true;
       agents.set(id, state);
       if (state.open) recovered.add(id);
     }
     for (const record of journal.pending) pendingRecords.set(record.id, record);
+    journalLoaded = true;
     // Recover an already-appended turn from a checkpoint taken before closure.
     const recorded = new Map(allRecords().map((record) => [record.id, record]));
     for (const state of agents.values()) {
@@ -230,6 +265,8 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         },
         onError: (error) => {
           for (const [id, state] of agents) { needsReconcile.add(id); markUsageGap(state); }
+          for (const state of retired.values()) markUsageGap(state);
+          if (retired.size) retiredDirty = true;
           checkpoint();
           console.error('token-ledger: agent catalog failed', error);
         },
@@ -243,6 +280,11 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         persist(record);
       }
       recovered.clear();
+      // Journals written before v0.8.3 hold every agent ever seen.
+      for (const id of [...agents.keys()]) {
+        const agent = catalog.agents.get(id);
+        if (!agent || agent.archivedAt || agent.status === 'closed') moveToRetired(id);
+      }
       await Promise.allSettled([...catalog.agents.values()].filter((agent) => agent.status !== 'closed' && !agent.archivedAt)
         .map((agent) => subscriptions!.watch(agent.id)));
       console.log(`token-ledger: tracking ${subscriptions.size} agent(s)`);
@@ -274,7 +316,7 @@ export function stopTracker(): Promise<void> {
 }
 
 function inFlightFor(agentId: string): InFlight | null {
-  const state = agents.get(agentId);
+  const state = peekState(agentId);
   const open = state?.open;
   if (!state || !open) return null;
   const record = finalizeTurn({ agentId, turnId: open.turnId, provider: open.provider, model: open.model,
@@ -296,7 +338,7 @@ function inFlightFor(agentId: string): InFlight | null {
 }
 
 function usageSnapshotFor(agentId: string): UsageSnapshot | null {
-  const state = agents.get(agentId);
+  const state = peekState(agentId);
   const previous = lastRecordForAgent(agentId);
   const provider = state?.provider ?? previous?.provider ?? null;
   const scope = tokenScope({ provider });
@@ -332,7 +374,7 @@ export async function handleSync(
     recordsRevision,
     records: input.knownRecordsRevision === recordsRevision ? [] : (group?.rows.slice(0, input.limit ?? 50) ?? []),
     summary,
-    ctx: agents.get(input.agentId)?.lastCtx ?? null,
+    ctx: peekState(input.agentId)?.lastCtx ?? null,
     usageSnapshot: usageSnapshotFor(input.agentId),
   };
 }
@@ -355,7 +397,7 @@ export async function handleOverview(input: { since?: string }, context: { paseo
   for (const agentId of agentIds) {
     const stored = byAgent.get(agentId);
     const snapshot = snapshots.get(agentId) ?? null;
-    const state = agents.get(agentId);
+    const state = peekState(agentId);
     const open = state?.open ?? null;
     const summary = !stored ? { ...EMPTY_SUMMARY }
       : since === null ? stored.summary

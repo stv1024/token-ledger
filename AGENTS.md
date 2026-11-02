@@ -1,6 +1,6 @@
 # AGENTS.md — 开发调试速查
 
-TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
+TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0、0.14.0）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
 ## UI 设计理念
 
@@ -57,7 +57,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 ## 0.8 优化后的约束
 
-- `server/journal.ts` 保存 open turn、session/cost 基线及 pending records；先写 journal 再 append JSONL，open.key 是稳定 UUID。结束 hook 无 usage，短暂等待 timeline 终值后按已观测数据结算；清理时完成已知的结束 hook。
+- `server/journal.ts` 保存 open turn、session/cost 基线及 pending records；先写 journal 再 append JSONL，open.key 是稳定 UUID。已退役（archived/closed/移除）agent 的完整状态移到 `tracker-retired.json`，只在退役或重开时写；`stateFor` 重开时整份移回，**不要改成删除状态**——账本只留 2000 条，记录被裁剪后基线无法从 ledger 重建。journal 读入前（`journalLoaded`）不写任何 checkpoint，否则未启动就 stop 会用空表覆盖。结束 hook 无 usage，短暂等待 timeline 终值后按已观测数据结算；清理时完成已知的结束 hook。
 - `server/read-model.ts` 按 store/pricing revision 缓存归一化行与汇总；`client/data.ts` 共享 panel/pill 查询并合并未变化的 records。RPC 的空 records 配合相同 recordsRevision 表示未变化，不表示历史清空。
 - `server/catalog.ts` 复用完整 agent 目录并订阅分页 workspace 目录；总览不再每次查询只取前 200 个 agent。
 - `providerSemantics` 区分 Claude turn、Codex request、OMP session/branch 和 unknown；`tokenScope` 在读取旧账本时按已验证 harness 补足解释。session/unknown 只作为快照显示，不做轮差、不计入轮次或日期范围合计、不估算单轮费用。`ledger.sync.usageSnapshot` 保留迟到的闭轮/idle 观察，不能据此重开一轮；无 epoch/终值归属时不猜测真实轮增量。
@@ -88,7 +88,13 @@ paseo agent archive <id>                                  # 测完归档，别�
 - **background workspace 默认被过滤**：0.12 的 `agents.list` / `workspaces.list` 及其 update 流不带 `filter.includeBackground` 时排除 background workspace，被过滤的 agent 以 `remove` 推送。MCP 新建 workspace 会继承调用方的 background，子 agent 常在其中。所有目录 list 都经 `shared/background.ts` 的 `includingBackground`；同一订阅的翻页必须沿用 open 时的 filter。0.12+ 客户端 SDK 连旧 daemon 会抛 "Update the host to use background workspaces."，回退为无 filter，不抬高最低版本。
 - **`remove` 不等于删除**：tracker 收到 update 流的 `remove` 后先 `agents.ref(id).refresh()` 确认（按 ID 不受 background 过滤），agent 仍在则保留 open turn，确认消失才 retire。
 - CLI 的 `paseo agent archive <id>` 找不到 background agent；测试后用 `paseo workspace archive` 和 `paseo project delete` 清理。
-- 0.12 编译器允许 type-only import `@getpaseo/protocol/*` 子路径，但最低版本仍是 0.11，上面的 import 禁令不变。0.13 将弃用 `/client/react-native`（改用 `/client/ui`），届时再迁移。
+- 0.12 编译器允许 type-only import `@getpaseo/protocol/*` 子路径，但最低版本仍是 0.11，上面的 import 禁令不变。`/client/react-native` 自 0.13 弃用，2027-04-20 后移除；`Icon`/`ScrollView` 到 0.13.0 才进 `/client/ui`，所以迁移要把最低版本提到 0.13.0，在该日期前做。
+
+## 0.13 / 0.14 适配约束
+
+- 0.13 起 `turn_ended` hook 的 `timeline` 为空；TokenLedger 只读 `turnId` 和 `outcome`，不受影响。
+- 0.14 空闲一小时后释放可释放的 runtime，下个 prompt 时 resume 同一 session。实测升级后的 Claude 轮次在 1 小时到 2 天的空闲间隔后 `totalCostUsd` 仍连续，首轮费用未丢；计数下降（如 daemon 重启）仍记 unknown，不猜测。
+- 0.13 的 connected hosts、file panels、translations 和 0.14 的 per-agent tools、session MCP 都不需要。
 
 ## 截图
 

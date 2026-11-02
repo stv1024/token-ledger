@@ -6,7 +6,8 @@ export function fmtTokens(value: number | null): string {
   if (value === null) return "–";
   if (value < 1000) return String(value);
   if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
-  return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value < 1_000_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  return `${(value / 1_000_000_000).toFixed(2)}B`;
 }
 
 export function fmtCost(value: number | null): string | null {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Requires Paseo **0.11.0 or newer**; verified on 0.14.0. No ledger changes.
+
+- Keep archived, closed, and removed agents out of the frequent tracker checkpoint. `tracker-state.json` was rewritten in full up to four times a second and kept every agent ever seen, so its writes grew without limit (one user measured 440 GB in 3 days; thanks to @tmikaeld). Retired agents now move with their full state to `tracker-retired.json`, which changes only when an agent retires or returns, so cost baselines stay exact. Existing journals are split on the first start.
+- Do not overwrite the tracker journal when the plugin stops before tracking started, for example on a reload or daemon stop with no session, turn, or overview request since load. Before, this erased every agent's cost baseline and any recovered records that were not yet written to the ledger.
+- Show token counts of one billion or more with a `B` suffix instead of thousands of millions (thanks to @tmikaeld).
+
 ## v0.8.2 (2026-10-28) — settings shortcut, published from CI
 
 Requires Paseo **0.11.0 or newer**. No data changes. See the [release notes](docs/releases/v0.8.2.md).
