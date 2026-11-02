@@ -48,7 +48,7 @@ exclude beta builds.
 | 0.11.1 | Installed desktop/daemon, published SDK, typecheck, 65 tests, dependency-free compile probe, plugin reload, real Claude/Codex turns, manual sidebar and overview check on 2026-10-09 | Supported by v0.7.0 |
 | 0.12.0 | Installed desktop/daemon, published SDK, typecheck and 75 tests against both the 0.11.1 pin and 0.12.0, plugin reload, real Claude turns in a background workspace (before/after control) on 2026-10-23 | Requires the background-workspace fix below; otherwise compatible |
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
-| 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Compatible; tracker journal fixes are unreleased |
+| 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Supported by v0.8.3, which also fixes the tracker journal |
 
 The 0.11.1 investigation found:
 
