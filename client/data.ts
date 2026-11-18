@@ -7,7 +7,15 @@ import { preferences, refreshIntervalMs } from '../shared/preferences.ts';
 
 const coordinators = new WeakMap<QueryClient, Map<PaseoApi, { count: number; dispose: () => void }>>();
 
-/** One catalog listener per mounted client, with bounded trailing invalidation. */
+// Live usage changes many times a second while an agent streams.
+const AGENT_REFRESH_MS = 1000;
+const OVERVIEW_REFRESH_MS = 500;
+
+/**
+ * One catalog listener per mounted client, with bounded trailing invalidation.
+ * Only agent queries show live usage. The overview shows ledger totals and
+ * which agents are active, so usage snapshots do not refresh it.
+ */
 function useRefresh(pricingKey: string | null): void {
   const paseo = usePaseo();
   const cache = useQueryClient();
@@ -19,26 +27,38 @@ function useRefresh(pricingKey: string | null): void {
     if (!clients) { clients = new Map(); coordinators.set(cache, clients); }
     let coordinator = clients.get(paseo);
     if (!coordinator) {
-      const fingerprints = new Map<string, string>();
+      const usage = new Map<string, string>();
+      const shape = new Map<string, string>();
       const dirty = new Set<string>();
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let agentTimer: ReturnType<typeof setTimeout> | undefined;
+      let overviewTimer: ReturnType<typeof setTimeout> | undefined;
+      const changed = (seen: Map<string, string>, id: string, fingerprint: string) => {
+        if (seen.get(id) === fingerprint) return false;
+        seen.set(id, fingerprint);
+        return true;
+      };
       const unsubscribe = paseo.agents.subscribe((event) => {
         const id = event.kind === 'upsert' ? event.agent.id : event.agentId;
-        const fingerprint = event.kind === 'upsert' ? JSON.stringify([
-          event.agent.activeTurn, event.agent.lastUsage, event.agent.status,
-          event.agent.model, event.agent.title, event.agent.workspaceId,
+        const metadata = event.kind === 'upsert' ? JSON.stringify([
+          event.agent.activeTurn, event.agent.status, event.agent.model, event.agent.title, event.agent.workspaceId,
         ]) : 'removed';
-        if (fingerprints.get(id) === fingerprint) return;
-        fingerprints.set(id, fingerprint);
-        dirty.add(id);
-        timer ??= setTimeout(() => {
-          timer = undefined;
-          for (const agentId of dirty) void cache.invalidateQueries({ queryKey: ['token-ledger', 'agent', agentId] });
-          dirty.clear();
-          void cache.invalidateQueries({ queryKey: ['token-ledger', 'overview'] });
-        }, 500);
+        const live = event.kind === 'upsert' ? `${metadata}${JSON.stringify(event.agent.lastUsage)}` : metadata;
+        if (changed(usage, id, live)) {
+          dirty.add(id);
+          agentTimer ??= setTimeout(() => {
+            agentTimer = undefined;
+            for (const agentId of dirty) void cache.invalidateQueries({ queryKey: ['token-ledger', 'agent', agentId] });
+            dirty.clear();
+          }, AGENT_REFRESH_MS);
+        }
+        if (changed(shape, id, metadata)) {
+          overviewTimer ??= setTimeout(() => {
+            overviewTimer = undefined;
+            void cache.invalidateQueries({ queryKey: ['token-ledger', 'overview'] });
+          }, OVERVIEW_REFRESH_MS);
+        }
       });
-      coordinator = { count: 0, dispose: () => { unsubscribe(); clearTimeout(timer); } };
+      coordinator = { count: 0, dispose: () => { unsubscribe(); clearTimeout(agentTimer); clearTimeout(overviewTimer); } };
       clients.set(paseo, coordinator);
     }
     coordinator.count++;

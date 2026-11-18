@@ -59,6 +59,10 @@ test('pricing serves local rates during network refresh, prices each request, an
     resolveFetch(new Response(JSON.stringify({ data: [{ id: 'remote', pricing: { prompt: '0.002', completion: '0.003' } }] })));
     for (let i = 0; pricing.pricingRevision() === refreshed && i < 100; i++) await new Promise((r) => setTimeout(r, 5));
     assert.notEqual(pricing.pricingRevision(), refreshed);
+    // Matches are cached per model, but a new price list replaces them.
+    const repriced = pricing.estimateUsageCost({ provider: 'codex', model: 'remote', ...request });
+    assert.ok(Math.abs(repriced.effectiveCostUsd! - 0.02) < 1e-12);
+    assert.equal(repriced.partialCost, true);
   } finally {
     globalThis.fetch = originalFetch; Date.now = originalNow;
     if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome;

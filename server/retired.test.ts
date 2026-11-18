@@ -27,12 +27,22 @@ test('retired agents leave the frequent checkpoint and return with their cost ba
       append: async () => ({ seq: 1, epoch: 'test' }) } }),
   } } as unknown as PaseoApi;
   const tracker = await import('./tracker.ts');
+  const journal = await import('./journal.ts');
   const ids = async (name: string) => JSON.parse(await readFile(join(dir, name), 'utf8')).states.map(([id]: [string]) => id).sort();
+  // What the next start sees: a live copy wins over a retired one.
+  const retiredIds = async () => {
+    const loaded = await journal.loadJournal();
+    const live = new Set(loaded.states.map(([id]) => id));
+    return loaded.retired.map(([id]) => id).filter((id) => !live.has(id)).sort();
+  };
   try {
     await tracker.ensureTracker(paseo);
     await new Promise((resolve) => setTimeout(resolve, 400)); // let the debounced checkpoint land
     assert.deepEqual(await ids('tracker-state.json'), ['live']);
-    assert.deepEqual(await ids('tracker-retired.json'), ['closed', 'deleted']);
+    assert.deepEqual(await retiredIds(), ['closed', 'deleted']);
+    // Retiring appends to the log; it does not rewrite the snapshot.
+    await assert.rejects(readFile(join(dir, 'tracker-retired.json'), 'utf8'), { code: 'ENOENT' });
+    assert.equal((await readFile(join(dir, 'tracker-retired.jsonl'), 'utf8')).trim().split(/\r?\n/).length, 2);
 
     tracker.observeStream({ agentId: 'closed', timestamp: '2026-11-02T00:00:00Z', event: { type: 'turn_started', provider: 'claude', turnId: 't1' } });
     tracker.observeStream({ agentId: 'closed', timestamp: '2026-11-02T00:00:01Z', event: { type: 'turn_completed', provider: 'claude', turnId: 't1',
@@ -41,7 +51,7 @@ test('retired agents leave the frequent checkpoint and return with their cost ba
     assert.equal(synced.records[0].costUsd, 2);
     await tracker.stopTracker();
     assert.deepEqual(await ids('tracker-state.json'), ['closed', 'live']);
-    assert.deepEqual(await ids('tracker-retired.json'), ['deleted']);
+    assert.deepEqual(await retiredIds(), ['deleted']);
   } finally {
     await tracker.stopTracker();
     if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome;

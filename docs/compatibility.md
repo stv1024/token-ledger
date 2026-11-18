@@ -28,7 +28,7 @@ the release for Paseo 0.9.1-0.10.x hosts.
   any other type import breaks installation. Updating the host does not require
   updating these pins in lockstep.
 - **Ongoing checks:** CI runs the typecheck and existing tests against 0.11.0,
-  0.11.1, 0.12.0, 0.14.0, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
+  0.11.1, 0.12.0, 0.14.0, 0.16.1, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
   detect type and SDK regressions; real provider turns remain necessary to
   verify token/cost semantics and host behavior. CI failures do not silently
   rewrite the compatibility range or disable installed plugins.
@@ -49,6 +49,7 @@ exclude beta builds.
 | 0.12.0 | Installed desktop/daemon, published SDK, typecheck and 75 tests against both the 0.11.1 pin and 0.12.0, plugin reload, real Claude turns in a background workspace (before/after control) on 2026-10-23 | Requires the background-workspace fix below; otherwise compatible |
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
 | 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Supported by v0.8.3, which also fixes the tracker journal |
+| 0.16.1 | Installed desktop/daemon, published SDK, typecheck against the 0.11.1 pin, 0.12.0, 0.14.0, and 0.16.1, 84 tests against the 0.11.1 pin and 0.16.1, plugin reload on the installed daemon, and old/new read-model and journal comparison on a copy of real data on 2026-11-18 | Supported by v0.8.4, which also fixes the client agent type for the 0.16 SDK |
 
 The 0.11.1 investigation found:
 
@@ -156,3 +157,22 @@ The 0.13.x and 0.14.0 review found:
 - Unrelated to 0.14, the review found that the tracker journal kept every agent
   and was rewritten in full on each checkpoint, and that a stop before tracking
   started wrote an empty journal. Both are fixed; see the changelog.
+
+The 0.15.x and 0.16.x review found:
+
+- The 0.16 client SDK lets `agents.ref` take an `AgentRef` as well as an agent
+  snapshot. The client agent type was derived from that parameter, so the
+  typecheck failed on 0.16. v0.8.4 derives it from the agent update stream,
+  which has the same type on 0.11 through 0.16.
+- 0.16 adds plugin subscriptions (`defineSubscription` on the server,
+  `useSubscription` and `client.subscribe` on the client). The plugin could
+  push ledger changes instead of being polled, but this raises the minimum to
+  0.16. v0.8.4 instead removes the
+  cause of the slow requests (they waited for disk writes) and the most frequent
+  refreshes. Move to these APIs when raising the minimum anyway.
+- Deprecations with removal dates: `/client/react-native` after 2027-04-20 (its
+  `Icon` and `ScrollView` are in `/client/ui` from 0.13.0), and the lifecycle
+  `server.on` / `server.before` after 2027-04-30 (replaced by `addHook`, from
+  0.15). `addWorkspacePanel` with `context: "agent"` is deprecated in favor of
+  `addAgentPanel` (from 0.13), without a removal date yet. One release that raises the
+  minimum to 0.16 can move all of them before 2027-04-20.

@@ -27,7 +27,10 @@ const liveRecords = new Set<string>();
 const agents = new Map<string, AgentState>();
 // Archived, closed, and removed agents keep their full state here until they return.
 const retired = new Map<string, AgentState>();
-let retiredDirty = false;
+// Retired agents to append to the retired log at the next checkpoint.
+const retiredChanged = new Set<string>();
+// Set when every retired state changed; the next checkpoint rewrites the snapshot.
+let retiredCompact = false;
 // Until the journal is read, empty maps must not overwrite it (such as a stop before any start).
 let journalLoaded = false;
 let subscriptions: TimelineSubscriptions | null = null;
@@ -53,10 +56,18 @@ function checkpoint(): void {
 }
 function saveCheckpoint(): Promise<void> {
   if (!journalLoaded) return Promise.resolve();
-  const changed = retiredDirty;
-  retiredDirty = false;
-  return saveJournal(agents, pendingRecords, changed ? retired : undefined)
-    .catch((error) => { if (changed) retiredDirty = true; throw error; });
+  const ids = [...retiredChanged];
+  const compact = retiredCompact;
+  retiredChanged.clear();
+  retiredCompact = false;
+  // An agent that returned before this save is in the live journal instead.
+  const changed = ids.flatMap((id): [string, AgentState][] => { const state = retired.get(id); return state ? [[id, state]] : []; });
+  return saveJournal(agents, pendingRecords, { changed, all: retired, compact })
+    .catch((error) => {
+      for (const id of ids) retiredChanged.add(id);
+      if (compact) retiredCompact = true;
+      throw error;
+    });
 }
 /** Reads without reviving a retired agent. */
 function peekState(agentId: string): AgentState | undefined {
@@ -67,7 +78,7 @@ function moveToRetired(agentId: string): void {
   if (!state || state.open) return;
   agents.delete(agentId);
   retired.set(agentId, state);
-  retiredDirty = true;
+  retiredChanged.add(agentId);
   checkpoint();
 }
 async function drainRecords(): Promise<void> {
@@ -90,12 +101,18 @@ function persist(record: TurnRecord | null): void {
   persistence = persistence.catch(() => undefined).then(drainRecords);
   void persistence.catch((error) => console.error("token-ledger: failed to persist turn", error));
 }
+/** Resolves after the records closed so far are on disk. RPC reads do not need it. */
+export async function whenPersisted(): Promise<void> {
+  await persistence.catch(() => undefined);
+  await flushStore();
+}
 
 function stateFor(agentId: string): AgentState {
   let state = agents.get(agentId);
   if (!state) {
     state = retired.get(agentId);
-    if (state) { retired.delete(agentId); retiredDirty = true; checkpoint(); }
+    // The retired copy stays on disk until a compaction; the live copy wins on load.
+    if (state) { retired.delete(agentId); checkpoint(); }
     else state = createState(lastRecordForAgent(agentId));
     agents.set(agentId, state);
   }
@@ -152,7 +169,7 @@ function retireAgent(id: string, gap = false): void {
     moveToRetired(id);
   } else if (gap && retired.has(id)) {
     markUsageGap(retired.get(id)!);
-    retiredDirty = true;
+    retiredChanged.add(id);
     checkpoint();
   }
   subscriptions?.unwatch(id);
@@ -189,7 +206,7 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
     for (const [id, state] of journal.retired) retired.set(id, state);
     for (const [id, state] of journal.states) {
       // A crash after an agent returned can leave both copies; the live one is newer.
-      if (retired.delete(id)) retiredDirty = true;
+      retired.delete(id);
       agents.set(id, state);
       if (state.open) recovered.add(id);
     }
@@ -266,7 +283,7 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
         onError: (error) => {
           for (const [id, state] of agents) { needsReconcile.add(id); markUsageGap(state); }
           for (const state of retired.values()) markUsageGap(state);
-          if (retired.size) retiredDirty = true;
+          if (retired.size) retiredCompact = true;
           checkpoint();
           console.error('token-ledger: agent catalog failed', error);
         },
@@ -301,16 +318,19 @@ export function ensureTracker(paseo: PaseoApi): Promise<void> {
 export function stopTracker(): Promise<void> {
   stopped = true;
   stopPromise ??= (async () => {
-    await agentCatalog?.release();
-    agentCatalog = null;
-    await subscriptions?.dispose();
-    await catalog.dispose();
+    // The host kills a plugin that stops slowly. Save the ledger before the
+    // daemon round trips, which are slow when the daemon is busy.
     if (checkpointTimer) clearTimeout(checkpointTimer);
     for (const pending of [...terminalTimers.values()]) { clearTimeout(pending.timer); pending.settle(); }
     await persistence.catch(() => undefined);
     await drainRecords();
     await flushStore();
-    await publisher.flush();
+    await agentCatalog?.release();
+    agentCatalog = null;
+    await subscriptions?.dispose();
+    await catalog.dispose();
+    // Timeline rows are optional; the ledger already has these records.
+    await Promise.race([publisher.flush(), new Promise((resolve) => setTimeout(resolve, 250).unref())]);
   })();
   return stopPromise;
 }
@@ -363,9 +383,8 @@ export async function handleSync(
 ): Promise<SyncResult> {
   await ensureTracker(context.paseo);
   await ensurePricing();
-  await persistence;
-  await flushStore();
-  const model = readModel();
+  // Reads never wait for disk: records that are not appended yet come from memory.
+  const model = readModel(pendingRecords.values());
   const group = model.groups.get(input.agentId);
   const summary = group?.summary ?? { ...EMPTY_SUMMARY };
   const recordsRevision = `${model.revision}:${input.agentId}:${input.limit ?? 50}`;
@@ -383,9 +402,7 @@ export async function handleOverview(input: { since?: string }, context: { paseo
   const since = input.since ? Date.parse(input.since) : null;
   await ensureTracker(context.paseo);
   await ensurePricing();
-  await persistence;
-  await flushStore();
-  const byAgent = readModel().groups;
+  const byAgent = readModel(pendingRecords.values()).groups;
   await catalog.ensureWorkspaces(context.paseo);
   const snapshots = catalog.agents;
   const workspaceNames = catalog.workspaceNames;

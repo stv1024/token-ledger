@@ -170,18 +170,36 @@ function legacyPriceKey(value: string): string {
 }
 
 
+type PriceMatch = { entry: PriceEntry } | { pricing: ModelPricing; source: 'openrouter' | 'builtin' } | { warning: string } | null;
+const matches = new Map<string, PriceMatch>();
+let matchesRevision = '';
+
+/** Matching scans every price, so it runs once per provider and model until pricing changes. */
+function matchPricing(provider: string | null, model: string): PriceMatch {
+  const current = pricingRevision();
+  if (current !== matchesRevision) { matches.clear(); matchesRevision = current; }
+  const key = JSON.stringify([provider, model]);
+  let match = matches.get(key);
+  if (match === undefined) { match = findPricing(provider, model); matches.set(key, match); }
+  return match;
+}
+
 function resolvePricing(provider: string | null, model: string | null, prompt: number | null): { pricing: ModelPricing; source: Exclude<CostSource, "reported"> } | { warning: string } | null {
   if (!model) return null;
+  const match = matchPricing(provider, model);
+  if (!match || !('entry' in match)) return match;
+  const pricing = chooseTier(match.entry, prompt);
+  return pricing ? { pricing, source: 'override' } : null;
+}
+
+function findPricing(provider: string | null, model: string): PriceMatch {
   const canonical = canonicalModel(model);
   const matches = overridePrices.filter((entry) =>
     [entry.model, ...(entry.aliases ?? [])].some((id) => canonicalModel(id) === canonical) && providerMatches(entry, provider));
   const scoped = matches.filter((entry) => entry.providers?.length);
   const candidates = scoped.length ? scoped : matches;
   if (candidates.length > 1) return { warning: `Multiple custom prices match ${model}. Keep one matching entry in pricing.json; reference-price fallback is blocked.` };
-  if (candidates.length === 1) {
-    const pricing = chooseTier(candidates[0], prompt);
-    return pricing ? { pricing, source: 'override' } : null;
-  }
+  if (candidates.length === 1) return { entry: candidates[0] };
   const legacyKey = legacyPriceKey(model);
   const formerScope = `${provider ?? ''} ${model}`.toLowerCase();
   const legacyMatch = overridePrices.some((entry) =>

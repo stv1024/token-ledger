@@ -39,6 +39,7 @@ test('startup replays pending writes idempotently, settles missing agents, and p
     await tracker.ensureTracker(paseo);
     const before = await tracker.handleSync({agentId:'live'}, {paseo});
     assert.equal(before.inFlight?.input, 50);
+    await tracker.whenPersisted();
     assert.equal(store.allRecords().filter((r) => r.id === pending.id).length, 1);
     assert.match(store.allRecords().find((r) => r.agentId === 'missing')!.source, /^recovered_interruption:/);
     assert.equal(published.length, 0);
@@ -47,6 +48,8 @@ test('startup replays pending writes idempotently, settles missing agents, and p
     assert.equal(after.records[0].id, live.open!.key);
     assert.equal(after.records[0].input, 110);
     assert.equal(after.records[0].requests?.length, 2);
+    // A summary follows the durable append; a stopping tracker does not publish.
+    await tracker.whenPersisted();
     await tracker.stopTracker();
     assert.equal(published.length, 1);
   } finally {
