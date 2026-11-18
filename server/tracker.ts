@@ -16,7 +16,7 @@ import {
   loadStore,
 } from "./store.ts";
 
-import { readModel, summaryFromRows, EMPTY_SUMMARY } from "./read-model.ts";
+import { addSummary, readModel, summaryFromRows, EMPTY_SUMMARY } from "./read-model.ts";
 import { Catalog } from "./catalog.ts";
 import { TimelinePublisher } from "./timeline.ts";
 import { TimelineSubscriptions } from './subscriptions.ts';
@@ -421,19 +421,7 @@ export async function handleOverview(input: { since?: string }, context: { paseo
       : summaryFromRows(stored.rows.filter((row) => Date.parse(row.endedAt) >= since));
     // A range lists only the agents that used tokens in it or that work now.
     if (since !== null && summary.turns === 0 && open === null) continue;
-    totals.turns += summary.turns;
-    if (summary.input !== null) totals.input = (totals.input ?? 0) + summary.input;
-    if (summary.cached !== null) totals.cached = (totals.cached ?? 0) + summary.cached;
-    if (summary.cacheWrite != null) totals.cacheWrite = (totals.cacheWrite ?? 0) + summary.cacheWrite;
-    if (summary.output !== null) totals.output = (totals.output ?? 0) + summary.output;
-    if (summary.costUsd !== null) totals.costUsd = (totals.costUsd ?? 0) + summary.costUsd;
-    if (summary.effectiveCostUsd !== null) totals.effectiveCostUsd = (totals.effectiveCostUsd ?? 0) + summary.effectiveCostUsd;
-    totals.estimatedTurns += summary.estimatedTurns;
-    totals.unpricedTurns += summary.unpricedTurns;
-    totals.unmeasuredTurns += summary.unmeasuredTurns;
-    totals.incompleteTurns += summary.incompleteTurns;
-    totals.partialCostTurns += summary.partialCostTurns;
-    totals.pricingWarningTurns += summary.pricingWarningTurns;
+    addSummary(totals, summary);
     const row: AgentUsageRow = {
       agentId,
       title: snapshot?.title ?? null,

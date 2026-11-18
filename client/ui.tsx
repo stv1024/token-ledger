@@ -1,6 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Text, View } from "react-native";
 import type { Summary, TurnRecord } from "../shared/ledger.ts";
+import { cacheRatio } from "../shared/pricing.ts";
 
 export function fmtTokens(value: number | null): string {
   if (value === null) return "–";
@@ -125,6 +126,10 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
   const costValue = cost ? `${summary.estimatedTurns > 0 ? '≈' : ''}${cost}` : 'unknown';
   const costLabel = ['known cost', summary.partialCostTurns > 0 ? `${summary.partialCostTurns} partial` : null,
     summary.unpricedTurns > 0 ? `${summary.unpricedTurns} unknown` : null].filter(Boolean).join(' · ');
+  // Only turns with a complete prompt count; a rate over part of the turns says how many it leaves out.
+  const hit = fmtPct(cacheRatio(summary.promptCached ?? null, summary.promptTokens ?? null));
+  const unknownHit = summary.unknownPromptTurns ?? 0;
+  const hitLabel = hit && unknownHit > 0 ? `cache hit · ${unknownHit} unknown` : 'cache hit';
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: dense ? 10 : 16 }}>
@@ -132,6 +137,7 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
         <Stat label="known input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
         <Stat label="cache read" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
         <Stat label="cache write" value={fmtTokens(summary.cacheWrite ?? null)} theme={theme} dense={dense} />
+        <Stat label={hitLabel} value={hit ?? '–'} theme={theme} dense={dense} />
         <Stat label="known output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
         <Stat label={costLabel} value={costValue} theme={theme} dense={dense} />
       </View>

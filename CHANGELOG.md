@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Show the cache hit rate in the panel's session summary and in the overview totals. It is cache reads divided by the complete prompt (uncached input + cache read + cache write), summed over the turns that have a complete prompt. Turns without one (for example Claude turns, because Paseo does not report their cache writes) are left out and counted as `N unknown`. When no turn has a complete prompt, the value is `–`, not a rate over a partial prompt.
+
 ## v0.8.4 (2026-11-18) — requests that do not wait for disk, verified on Paseo 0.16
 
 Requires Paseo **0.11.0 or newer**; verified on 0.16.1. No ledger changes. See the [release notes](docs/releases/v0.8.4.md).

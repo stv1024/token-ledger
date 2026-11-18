@@ -20,7 +20,7 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 **Per-agent panel** (workspace/explorer, bound to one session — the header names the agent and model it is tracking):
 
-- **Session summary** — known per-turn input / cache / output subtotals and runtime-reported or reference cost. Missing counts stay `–`; partial estimates and unknown-cost turns are counted explicitly.
+- **Session summary** — known per-turn input / cache / output subtotals, cache hit rate, and runtime-reported or reference cost. Missing counts stay `–`; partial estimates and unknown-cost turns are counted explicitly. The hit rate counts only turns with a complete prompt; the label counts the turns it leaves out.
 - **Turn in progress** — elapsed time, observed token counts and cost when attributable to the turn, plus a context-window bar. Idle context usage remains visible.
 - **Turn history** — one row per finished turn with accounting scope and coverage. OMP session/branch totals and unverified-harness observations are snapshots, not turn usage, and are excluded from totals. A separate latest-snapshot card also reflects late idle updates.
 
@@ -32,7 +32,7 @@ Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an ag
 
 **Sidebar** — a **TokenLedger** row in the sidebar footer shows today's cost (or tokens when no price is known), with an activity icon while a turn is running. "Today" starts at local midnight on the device that shows it.
 
-**Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals, then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**. The sidebar row opens it on Today; the command center opens All time. Switching ranges stays on the same screen. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
+**Overview** (sidebar footer → TokenLedger, or the command center) — all sessions in one place: grand totals (with the cache hit rate), then per-agent rows grouped by workspace with live-turn indicator, last activity, cost/tokens, and turn count. Pick **Today**, **Last 7 days**, **Last 30 days**, or **All time**. The sidebar row opens it on Today; the command center opens All time. Switching ranges stays on the same screen. A range lists agents with turns that ended in it, plus agents with a turn in flight. Tapping a row jumps to that agent.
 
 <p align="center">
   <img src="images/screenshot-overview.png" alt="TokenLedger Today overview with synthetic data, excluded snapshots and a custom-price migration warning" width="720">
@@ -119,7 +119,7 @@ For attributable turn costs, the order is runtime-reported cost, local override,
 
 Estimated costs are marked `≈`; missing components/rates or uncertain request coverage add `partial`. Summaries expose unknown-cost turns rather than presenting the known subtotal as a complete bill. Codex request observations are priced separately; legacy records without requests use the aggregate as an explicitly partial estimate. A tiered price cannot be selected when the complete prompt size is unknown. Per-request routed model identities are not exposed, so reference pricing uses the recorded selected model, not a claim of the actual billed model.
 
-Paseo 0.11.2 still omits cache-write counts from the public Claude, Codex and OMP usage paths. Missing counts remain unknown; setting a price cannot recover them. Cache hit rate is read tokens divided by the complete prompt size: Codex's inclusive input supplies that denominator, while Claude/OMP need input + read + write. Without a complete denominator the panel shows `?`, not a near-100% rate. If input/cache counts are inconsistent, the plugin does not clamp them into a fabricated zero.
+Paseo 0.11.2 still omits cache-write counts from the public Claude, Codex and OMP usage paths. Missing counts remain unknown; setting a price cannot recover them. Cache hit rate is read tokens divided by the complete prompt size: Codex's inclusive input supplies that denominator, while Claude/OMP need input + read + write. Without a complete denominator a turn shows `?`, not a near-100% rate. The summary rate adds reads and prompts of the turns that have a denominator, and shows `–` when none has one. If input/cache counts are inconsistent, the plugin does not clamp them into a fabricated zero.
 
 Provider-internal subagents are not ordinary Paseo catalog agents. The Codex adapter discards child usage notifications; OMP session stats already include some task-child usage. Neither just traversing the catalog nor blindly adding children fixes accounting. OMP's branch-view totals can decrease, and its final usage can arrive after completion or be superseded by the next turn. Without epochs and turn attribution the plugin does not invent per-turn deltas: cumulative history is shown as snapshots and late observations refresh the separate latest-snapshot card. These snapshots do not enter date-range totals. TokenLedger uses only public Paseo APIs, not provider logs or gateway billing endpoints. See the [upstream API requirements](docs/paseo-usage-api.md).
 
