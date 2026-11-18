@@ -5,9 +5,9 @@
 Requires Paseo **0.11.0 or newer**, as in v0.8.4. No ledger changes. See the [release notes](docs/releases/v0.8.5.md).
 
 - Show the cache hit rate in the panel's session summary and in the overview totals. It is cache reads divided by the complete prompt (uncached input + cache read + cache write).
-- When a turn has no cache-write count, show an upper bound of its hit rate instead of `?`: cache read / (uncached input + cache read), marked `≤` (for example `≤97%`) and rounded up. Paseo 0.16.1 does not report Claude or OMP cache writes, so their turns show a bound. Turns with a complete prompt still show the real rate.
+- When a turn has no cache-write count, show an upper bound of its hit rate instead of `?`: cache read / (uncached input + cache read), marked `≤` (for example `≤97%`) and rounded up (to one decimal above 99%). Paseo 0.16.1 does not report Claude or OMP cache writes, so their turns show a bound. Turns with a complete prompt still show the real rate.
 - The summary adds reads and prompts over all turns that have a complete prompt or a lower bound of it. If any turn gives only a lower bound, the whole value is an upper bound and shows `≤`, because each missing write can only make the prompt larger. The real rate and the bound are kept in separate fields and are joined only for display. Turns with neither (snapshots, missing counts) are left out and counted as `N unknown`; with no usable turn, the value is `–`.
-- A turn with little uncached input gives a bound near `≤100%`. That is correct but says little; only a cache-write count from Paseo can make the rate exact.
+- Show a bound of 99.5% or more as `?`, in a turn and in the summary. A turn with little uncached input gives such a bound, which is correct but says nothing. Most Claude turns are like this; only a cache-write count from Paseo can make their rate exact. In the summary, `?` means the bound is too high to be useful, and `–` still means that no turn gives a rate or a bound.
 
 ## v0.8.4 (2026-11-18) — requests that do not wait for disk, verified on Paseo 0.16
 

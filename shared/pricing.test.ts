@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cacheRatio, costBreakdown, hitRate, summaryHitRate, costBreakdownWithPricing, knownCost, modelPricing, partialCost } from "./pricing.ts";
+import { cacheRatio, costBreakdown, hitRate, summaryHitRate, usefulHitRate, costBreakdownWithPricing, knownCost, modelPricing, partialCost } from "./pricing.ts";
 
 test("model matching covers known families and rejects unknown", () => {
   assert.deepEqual(modelPricing("claude-opus-5"), { input: 5, cacheRead: 0.5, output: 25 });
@@ -91,6 +91,14 @@ test('hit rate falls back to an upper bound only from a prompt floor', () => {
   assert.deepEqual(hitRate(0, null, 10000), { ratio: 0, upperBound: false });
   assert.equal(hitRate(9700, null, null), null);
   assert.equal(hitRate(9700, null), null);
+});
+
+test('an upper bound of 99.5% or more is dropped, an exact rate never is', () => {
+  assert.deepEqual(usefulHitRate({ ratio: 0.994, upperBound: true }), { ratio: 0.994, upperBound: true });
+  assert.equal(usefulHitRate({ ratio: 0.995, upperBound: true }), null);
+  assert.equal(usefulHitRate({ ratio: 0.9999, upperBound: true }), null);
+  assert.deepEqual(usefulHitRate({ ratio: 0.999, upperBound: false }), { ratio: 0.999, upperBound: false });
+  assert.equal(usefulHitRate(null), null);
 });
 
 test('summary rate is exact without floors and an upper bound of the whole set with them', () => {

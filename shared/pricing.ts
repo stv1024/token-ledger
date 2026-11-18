@@ -118,6 +118,14 @@ export function hitRate(cached: number | null, prompt: number | null, minPrompt?
   return { ratio: bound, upperBound: bound > 0 };
 }
 
+/** Bounds at or above this say nothing useful; the UI shows them as unknown (`?`). */
+export const MAX_USEFUL_BOUND = 0.995;
+
+/** Drops an upper bound that is too close to 100% to tell anything. */
+export function usefulHitRate(rate: HitRate | null): HitRate | null {
+  return rate !== null && rate.upperBound && rate.ratio >= MAX_USEFUL_BOUND ? null : rate;
+}
+
 /**
  * Summary rate. Turns with an unknown cache write add their prompt floor; then the
  * whole value is an upper bound, because each missing write can only make the prompt larger.
