@@ -102,7 +102,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 - `stopTracker` 先落盘（结算 terminal timer、drain、flushStore），再释放 daemon 订阅；timeline 摘要最多等 250ms。宿主停插件有超时，daemon 忙时释放订阅可能很慢。
 - 客户端：总览只显示账本汇总和 active，不随 `lastUsage` 刷新；只有 agent 查询（pill/panel）跟随 lastUsage，节流 1s。
 - 0.16 客户端 `agents.ref` 参数多了 `AgentRef`，`PaseoAgent` 改为从 `agents.subscribe` 的 upsert 事件推导。
-- 订阅（`defineSubscription`/`useSubscription`/`client.subscribe`）0.16 才有，`addHook` 0.15 才有，`addAgentPanel` 0.13 才有（均已查 SDK d.ts）。v0.8.5 之后已把最低版本提到 0.15，迁出 `/client/react-native`、`server.on/before` 和 `addWorkspacePanel({ context: "agent" })`（面板改 `addAgentPanel`，从 `params.agentId` 取 agent）。订阅推送没做：要把最低版本提到 0.16，总览、徽标、面板仍是轮询。
+- 订阅（`defineSubscription`/`useSubscription`/`client.subscribe`）0.16 才有，`addHook` 0.15 才有，`addAgentPanel` 0.13 才有（均已查 SDK d.ts）。v0.9.0 已把最低版本提到 0.15，迁出 `/client/react-native`、`server.on/before` 和 `addWorkspacePanel({ context: "agent" })`（面板改 `addAgentPanel`，从 `params.agentId` 取 agent）。订阅推送没做：要把最低版本提到 0.16，总览、徽标、面板仍是轮询。
 
 ## 截图
 

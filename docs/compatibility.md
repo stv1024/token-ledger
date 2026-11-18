@@ -1,7 +1,7 @@
 # Paseo compatibility
 
 TokenLedger's manifest allows **Paseo >=0.15.0**, on both the daemon and the app.
-This policy applies to the release after v0.8.5. v0.8.5 allows `>=0.11.0` and
+This policy applies from TokenLedger v0.9.0. v0.8.5 allows `>=0.11.0` and
 remains the release for Paseo 0.11-0.14 hosts. v0.6.3 allows `>=0.9.1` and remains
 the release for Paseo 0.9.1-0.10.x hosts.
 
@@ -53,8 +53,8 @@ exclude beta builds.
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
 | 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Supported by v0.8.3, which also fixes the tracker journal |
 | 0.16.1 | Installed desktop/daemon, published SDK, typecheck against the 0.11.1 pin, 0.12.0, 0.14.0, and 0.16.1, 84 tests against the 0.11.1 pin and 0.16.1, plugin reload on the installed daemon, and old/new read-model and journal comparison on a copy of real data on 2026-11-18 | Supported by v0.8.4, which also fixes the client agent type for the 0.16 SDK |
-| 0.15.0 | Published SDK, typecheck and 92 tests on 2026-11-18 | Minimum after v0.8.5; no installed host tested |
-| 0.16.1 | `addHook` migration: typecheck and 92 tests against the 0.15.0 pin and 0.16.1, dependency-free compile probe on the installed daemon, real Claude (new and resumed agent) and Codex turns with all three hooks firing on 2026-11-18 | Supported after v0.8.5 |
+| 0.15.0 | Published SDK, typecheck and 92 tests on 2026-11-18 | Minimum for v0.9.0; no installed host tested |
+| 0.16.1 | `addHook` migration: typecheck and 92 tests against the 0.15.0 pin and 0.16.1, dependency-free compile probe on the installed daemon, real Claude (new and resumed agent) and Codex turns with all three hooks firing on 2026-11-18 | Supported by v0.9.0 |
 
 The 0.11.1 investigation found:
 
@@ -182,7 +182,7 @@ The 0.15.x and 0.16.x review found:
   `addAgentPanel` (from 0.13), without a removal date yet. One release that raises the
   minimum to 0.16 can move all of them before 2027-04-20.
 
-The migration off deprecated APIs (after v0.8.5) found:
+The v0.9.0 migration off deprecated APIs found:
 
 - The minimum is 0.15.0, not 0.16: `addHook` is the newest API that the
   migration needs. Subscriptions stay out of this change; the overview, pill,

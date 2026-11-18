@@ -67,10 +67,10 @@ Or paste either source into **Settings → Plugins → Plugin source**.
 To install a tagged release from GitHub instead:
 
 ```bash
-paseo plugin add github:stv1024/token-ledger --ref v0.8.3
+paseo plugin add github:stv1024/token-ledger --ref v0.9.0
 ```
 
-Since Paseo 0.11, a bare `owner/name` source means the official plugin registry, which rejects `--ref`. Keep the `github:` prefix for Git installs. On Paseo 0.9.1–0.10.x, use `paseo plugin add stv1024/token-ledger --ref v0.6.3`.
+Since Paseo 0.11, a bare `owner/name` source means the official plugin registry, which rejects `--ref`. Keep the `github:` prefix for Git installs. On Paseo 0.11–0.14, use `paseo plugin add github:stv1024/token-ledger --ref v0.8.5`. On Paseo 0.9.1–0.10.x, use `paseo plugin add stv1024/token-ledger --ref v0.6.3`.
 
 Inspect or apply updates with:
 

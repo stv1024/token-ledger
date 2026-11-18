@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Paseo 0.15 minimum, off deprecated plugin APIs
+## v0.9.0 (2026-11-18) — Paseo 0.15 minimum, off deprecated plugin APIs
 
-Requires Paseo **0.15.0 or newer**; verified on 0.16.1. No ledger changes. Paseo 0.11–0.14 users should stay on v0.8.5.
+Requires Paseo **0.15.0 or newer**; verified on 0.16.1. No ledger changes. Paseo 0.11–0.14 users should stay on v0.8.5. See the [release notes](docs/releases/v0.9.0.md).
 
 - Use `addHook` for lifecycle hooks: `agent.open.before`, `agent.turn.before`, and `agent.turn.after` replace `server.before("agent.session_open")` and `server.on("agent.turn_started" | "agent.turn_ended")`, which Paseo removes after 2027-04-30. `addHook` is in Paseo 0.15 and later, so the minimum is now 0.15.0.
 - Register the session ledger with `addAgentPanel` instead of `addWorkspacePanel` with `context: "agent"`, and read the agent from `params.agentId`.
