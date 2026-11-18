@@ -16,6 +16,8 @@ export const EMPTY_SUMMARY: Summary = {
   pricingWarningTurns: 0,
   promptTokens: null,
   promptCached: null,
+  promptFloorTokens: null,
+  promptFloorCached: null,
   unknownPromptTurns: 0,
 };
 
@@ -31,6 +33,10 @@ export function addSummary(totals: Summary, summary: Summary): void {
   if (summary.promptTokens != null && summary.promptCached != null) {
     totals.promptTokens = (totals.promptTokens ?? 0) + summary.promptTokens;
     totals.promptCached = (totals.promptCached ?? 0) + summary.promptCached;
+  }
+  if (summary.promptFloorTokens != null && summary.promptFloorCached != null) {
+    totals.promptFloorTokens = (totals.promptFloorTokens ?? 0) + summary.promptFloorTokens;
+    totals.promptFloorCached = (totals.promptFloorCached ?? 0) + summary.promptFloorCached;
   }
   totals.estimatedTurns += summary.estimatedTurns;
   totals.unpricedTurns += summary.unpricedTurns;
@@ -54,10 +60,14 @@ export function summaryFromRows(rows: readonly TurnRow[]): Summary {
       summary.unknownPromptTurns! += 1;
       continue;
     }
-    // Hit rate needs the complete prompt: a missing cache write is unknown, not zero.
+    // A missing cache write is unknown, not zero: such turns only give a prompt floor, kept apart.
+    const floor = row.minPromptTokens ?? null;
     if (row.promptTokens !== null && row.promptTokens > 0 && row.cached !== null && row.cached <= row.promptTokens) {
       summary.promptTokens = (summary.promptTokens ?? 0) + row.promptTokens;
       summary.promptCached = (summary.promptCached ?? 0) + row.cached;
+    } else if (row.promptTokens === null && floor !== null && floor > 0 && row.cached !== null && row.cached <= floor) {
+      summary.promptFloorTokens = (summary.promptFloorTokens ?? 0) + floor;
+      summary.promptFloorCached = (summary.promptFloorCached ?? 0) + row.cached;
     } else {
       summary.unknownPromptTurns! += 1;
     }

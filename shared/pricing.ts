@@ -105,6 +105,35 @@ export function cacheRatio(cached: number | null, prompt: number | null): number
   return cached / prompt;
 }
 
+/** A hit rate, or only its upper bound when the prompt size is a lower bound. */
+export type HitRate = { ratio: number; upperBound: boolean };
+
+/** Exact rate from the complete prompt; otherwise an upper bound from the prompt floor. */
+export function hitRate(cached: number | null, prompt: number | null, minPrompt?: number | null): HitRate | null {
+  const exact = cacheRatio(cached, prompt);
+  if (exact !== null) return { ratio: exact, upperBound: false };
+  const bound = cacheRatio(cached, minPrompt ?? null);
+  if (bound === null) return null;
+  // No reads is a 0% rate for any prompt size.
+  return { ratio: bound, upperBound: bound > 0 };
+}
+
+/**
+ * Summary rate. Turns with an unknown cache write add their prompt floor; then the
+ * whole value is an upper bound, because each missing write can only make the prompt larger.
+ */
+export function summaryHitRate(summary: {
+  promptTokens?: number | null; promptCached?: number | null;
+  promptFloorTokens?: number | null; promptFloorCached?: number | null;
+}): HitRate | null {
+  const exact = summary.promptTokens != null && summary.promptCached != null;
+  const floor = summary.promptFloorTokens != null && summary.promptFloorCached != null;
+  if (!floor) return exact ? hitRate(summary.promptCached!, summary.promptTokens!) : null;
+  const cached = (exact ? summary.promptCached! : 0) + summary.promptFloorCached!;
+  const prompt = (exact ? summary.promptTokens! : 0) + summary.promptFloorTokens!;
+  return hitRate(cached, null, prompt);
+}
+
 /** Known components only; callers must preserve the separate completeness flag. */
 export function knownCost(split: CostBreakdown | null): number | null {
   if (!split) return null;

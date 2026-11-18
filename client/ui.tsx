@@ -1,7 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Text, View } from "react-native";
 import type { Summary, TurnRecord } from "../shared/ledger.ts";
-import { cacheRatio } from "../shared/pricing.ts";
+import { summaryHitRate, type HitRate } from "../shared/pricing.ts";
 
 export function fmtTokens(value: number | null): string {
   if (value === null) return "–";
@@ -48,6 +48,13 @@ export function fmtPct(ratio: number | null): string | null {
   const pct = ratio * 100;
   if (pct > 0 && pct < 1) return "<1%";
   return `${Math.round(pct)}%`;
+}
+
+/** "≤" marks an upper bound; it rounds up so that the shown value stays a true bound. */
+export function fmtHitRate(rate: HitRate | null): string | null {
+  if (rate === null) return null;
+  if (!rate.upperBound) return fmtPct(rate.ratio);
+  return `≤${Math.ceil(rate.ratio * 100 - 1e-9)}%`;
 }
 
 export function fmtDuration(ms: number | null): string {
@@ -126,8 +133,8 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
   const costValue = cost ? `${summary.estimatedTurns > 0 ? '≈' : ''}${cost}` : 'unknown';
   const costLabel = ['known cost', summary.partialCostTurns > 0 ? `${summary.partialCostTurns} partial` : null,
     summary.unpricedTurns > 0 ? `${summary.unpricedTurns} unknown` : null].filter(Boolean).join(' · ');
-  // Only turns with a complete prompt count; a rate over part of the turns says how many it leaves out.
-  const hit = fmtPct(cacheRatio(summary.promptCached ?? null, summary.promptTokens ?? null));
+  // Turns without a known cache write make the value an upper bound (≤); the label counts turns left out.
+  const hit = fmtHitRate(summaryHitRate(summary));
   const unknownHit = summary.unknownPromptTurns ?? 0;
   const hitLabel = hit && unknownHit > 0 ? `cache hit · ${unknownHit} unknown` : 'cache hit';
   return (

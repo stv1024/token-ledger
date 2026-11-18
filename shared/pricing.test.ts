@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cacheRatio, costBreakdown, costBreakdownWithPricing, knownCost, modelPricing, partialCost } from "./pricing.ts";
+import { cacheRatio, costBreakdown, hitRate, summaryHitRate, costBreakdownWithPricing, knownCost, modelPricing, partialCost } from "./pricing.ts";
 
 test("model matching covers known families and rejects unknown", () => {
   assert.deepEqual(modelPricing("claude-opus-5"), { input: 5, cacheRead: 0.5, output: 25 });
@@ -82,6 +82,25 @@ test('cache rate requires a complete, consistent denominator', () => {
   assert.equal(cacheRatio(0, 0), null);
   assert.equal(cacheRatio(10001, 10000), null);
   assert.equal(cacheRatio(0, 10000), 0);
+});
+
+test('hit rate falls back to an upper bound only from a prompt floor', () => {
+  assert.deepEqual(hitRate(8000, 10000, 10000), { ratio: 0.8, upperBound: false });
+  assert.deepEqual(hitRate(9700, null, 10000), { ratio: 0.97, upperBound: true });
+  // No reads is 0% for any prompt size, so it is exact.
+  assert.deepEqual(hitRate(0, null, 10000), { ratio: 0, upperBound: false });
+  assert.equal(hitRate(9700, null, null), null);
+  assert.equal(hitRate(9700, null), null);
+});
+
+test('summary rate is exact without floors and an upper bound of the whole set with them', () => {
+  assert.deepEqual(summaryHitRate({ promptTokens: 10000, promptCached: 8000 }), { ratio: 0.8, upperBound: false });
+  assert.deepEqual(summaryHitRate({ promptTokens: 10000, promptCached: 8000, promptFloorTokens: 10000, promptFloorCached: 9000 }),
+    { ratio: 0.85, upperBound: true });
+  assert.deepEqual(summaryHitRate({ promptTokens: null, promptCached: null, promptFloorTokens: 10000, promptFloorCached: 9700 }),
+    { ratio: 0.97, upperBound: true });
+  assert.equal(summaryHitRate({ promptTokens: null, promptCached: null }), null);
+  assert.equal(summaryHitRate({}), null);
 });
 
 test('cache writes have an independent price and do not increase reported totals', () => {
