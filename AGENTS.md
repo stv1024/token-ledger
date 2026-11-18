@@ -1,6 +1,6 @@
 # AGENTS.md — 开发调试速查
 
-TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0、0.14.0）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
+TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0、0.14.0、0.16.1）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
 ## UI 设计理念
 
@@ -57,7 +57,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 ## 0.8 优化后的约束
 
-- `server/journal.ts` 保存 open turn、session/cost 基线及 pending records；先写 journal 再 append JSONL，open.key 是稳定 UUID。已退役（archived/closed/移除）agent 的完整状态移到 `tracker-retired.json`，只在退役或重开时写；`stateFor` 重开时整份移回，**不要改成删除状态**——账本只留 2000 条，记录被裁剪后基线无法从 ledger 重建。journal 读入前（`journalLoaded`）不写任何 checkpoint，否则未启动就 stop 会用空表覆盖。结束 hook 无 usage，短暂等待 timeline 终值后按已观测数据结算；清理时完成已知的结束 hook。
+- `server/journal.ts` 保存 open turn、session/cost 基线及 pending records；先写 journal 再 append JSONL，open.key 是稳定 UUID。已退役（archived/closed/移除）agent 的完整状态移到退役存储：退役时往 `tracker-retired.jsonl` 追加一行 `{g, id, s}`，日志够长时压缩进带 `gen` 的快照 `tracker-retired.json`；重开时不写退役文件，启动时 live 副本优先。读入时只有 `g` 等于快照 `gen` 的行可以覆盖快照，其他代的行（压缩中途崩溃、降级到 v0.8.3 后旧代码重写了快照）只补快照里没有的 agent；无 `gen` 的旧快照在首次保存时压缩。`stateFor` 重开时整份移回，**不要改成删除状态**——账本只留 2000 条，记录被裁剪后基线无法从 ledger 重建。退役状态里没有 observations 明细（`open` 必须为空才能退役），字段都是续算基线，别为省空间删字段。journal 读入前（`journalLoaded`）不写任何 checkpoint，否则未启动就 stop 会用空表覆盖。结束 hook 无 usage，短暂等待 timeline 终值后按已观测数据结算；清理时完成已知的结束 hook。
 - `server/read-model.ts` 按 store/pricing revision 缓存归一化行与汇总；`client/data.ts` 共享 panel/pill 查询并合并未变化的 records。RPC 的空 records 配合相同 recordsRevision 表示未变化，不表示历史清空。
 - `server/catalog.ts` 复用完整 agent 目录并订阅分页 workspace 目录；总览不再每次查询只取前 200 个 agent。
 - `providerSemantics` 区分 Claude turn、Codex request、OMP session/branch 和 unknown；`tokenScope` 在读取旧账本时按已验证 harness 补足解释。session/unknown 只作为快照显示，不做轮差、不计入轮次或日期范围合计、不估算单轮费用。`ledger.sync.usageSnapshot` 保留迟到的闭轮/idle 观察，不能据此重开一轮；无 epoch/终值归属时不猜测真实轮增量。
@@ -95,6 +95,14 @@ paseo agent archive <id>                                  # 测完归档，别�
 - 0.13 起 `turn_ended` hook 的 `timeline` 为空；TokenLedger 只读 `turnId` 和 `outcome`，不受影响。
 - 0.14 空闲一小时后释放可释放的 runtime，下个 prompt 时 resume 同一 session。实测升级后的 Claude 轮次在 1 小时到 2 天的空闲间隔后 `totalCostUsd` 仍连续，首轮费用未丢；计数下降（如 daemon 重启）仍记 unknown，不猜测。
 - 0.13 的 connected hosts、file panels、translations 和 0.14 的 per-agent tools、session MCP 都不需要。
+
+## 0.16 适配约束
+
+- **只读 RPC（`ledger.sync` / `ledger.overview`）不能等落盘**：已结束但未 append 的记录由 `readModel(pendingRecords.values())` 从内存读出，按 id 去重。曾经 await persistence + flushStore，被退役文件全量重写阻塞到数秒并让 RPC 超时。测试要断言磁盘内容时用 `whenPersisted()`。`refreshProviderBases` 只有首次阻塞，之后后台刷新。
+- `stopTracker` 先落盘（结算 terminal timer、drain、flushStore），再释放 daemon 订阅；timeline 摘要最多等 250ms。宿主停插件有超时，daemon 忙时释放订阅可能很慢。
+- 客户端：总览只显示账本汇总和 active，不随 `lastUsage` 刷新；只有 agent 查询（pill/panel）跟随 lastUsage，节流 1s。
+- 0.16 客户端 `agents.ref` 参数多了 `AgentRef`，`PaseoAgent` 改为从 `agents.subscribe` 的 upsert 事件推导。
+- 订阅（`defineSubscription`/`useSubscription`/`client.subscribe`）0.16 才有，`addHook` 0.15 才有，`addAgentPanel` 0.13 才有（均已查 SDK d.ts）。用订阅就要把最低版本提到 0.16，v0.8.4 没用。`/client/react-native` 2027-04-20 后移除，`server.on/before` 2027-04-30 后移除；在 2027-04-20 前做一次提最低版本的迁移，届时把轮询换成订阅推送。
 
 ## 截图
 

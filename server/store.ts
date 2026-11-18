@@ -68,6 +68,8 @@ export function appendRecord(record: TurnRecord): Promise<void> {
 
 export function flushStore(): Promise<void> { return writeQueue; }
 
+export function hasRecord(id: string): boolean { return ids.has(id); }
+
 /** Newest first. */
 export function recordsForAgent(agentId: string, limit: number): TurnRecord[] {
   const matching: TurnRecord[] = [];

@@ -65,8 +65,13 @@ test('tracker starts without UI, serves validated RPCs, normalizes raw disk usag
     assert.equal(result.summary.turns, 1); assert.equal(result.records[0].input, 10);
     assert.equal(result.summary.cacheWrite, 10);
     assert.equal(result.records[0].requests?.[0].cacheWrite, 10);
-    assert.equal(result.records[0].quality, 'partial'); assert.equal(store.allRecords()[0].input, 100);
-    const unchanged = await tracker.handleSync({agentId: "a", knownRecordsRevision: result.recordsRevision}, {paseo});
+    assert.equal(result.records[0].quality, 'partial');
+    await tracker.whenPersisted();
+    assert.equal(store.allRecords()[0].input, 100);
+    // Moving from memory to disk changes the revision once; then it is stable.
+    const stored = await tracker.handleSync({agentId: "a"}, {paseo});
+    assert.deepEqual(stored.summary, result.summary);
+    const unchanged = await tracker.handleSync({agentId: "a", knownRecordsRevision: stored.recordsRevision}, {paseo});
     assert.deepEqual(unchanged.records, []);
     assert.deepEqual(unchanged.summary, result.summary);
     const beforeOverview = listCalls;

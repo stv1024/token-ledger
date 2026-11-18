@@ -5,9 +5,14 @@ const MAX_AGE_MS = 30_000;
 let loadedAt = 0;
 let pending: Promise<void> | null = null;
 
-/** Reads `extends` from custom provider entries; only provider names and base names are kept. */
+/**
+ * Reads `extends` from custom provider entries; only provider names and base names are kept.
+ * Only the first read blocks. Later reads refresh in the background, so a busy
+ * daemon cannot delay RPCs.
+ */
 export function refreshProviderBases(paseo: PaseoApi): Promise<void> {
-  if (pending) return pending;
+  const loaded = loadedAt > 0;
+  if (pending) return loaded ? Promise.resolve() : pending;
   if (Date.now() - loadedAt < MAX_AGE_MS) return Promise.resolve();
   pending = (async () => {
     try {
@@ -25,5 +30,5 @@ export function refreshProviderBases(paseo: PaseoApi): Promise<void> {
       pending = null;
     }
   })();
-  return pending;
+  return loaded ? Promise.resolve() : pending;
 }

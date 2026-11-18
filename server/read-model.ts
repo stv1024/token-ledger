@@ -1,5 +1,5 @@
 import type { Summary, TurnRecord, TurnRow } from '../shared/ledger.ts';
-import { allRecords, storeRevision } from './store.ts';
+import { allRecords, hasRecord, storeRevision } from './store.ts';
 import { enrichTurn, pricingRevision } from './pricing.ts';
 export const EMPTY_SUMMARY: Summary = {
   turns: 0,
@@ -49,11 +49,16 @@ export function summaryFromRows(rows: readonly TurnRow[]): Summary {
 
 let revision = '';
 let groups = new Map<string, {summary: Summary; rows: TurnRow[]; lastEndedAt: string | null}>();
-export function readModel() {
-  const current = storeRevision() + ':' + pricingRevision();
+/**
+ * `pending` holds closed turns that are not appended yet, so a read does not
+ * wait for disk. A record already in the store is not counted twice.
+ */
+export function readModel(pending: Iterable<TurnRecord> = []) {
+  const staged = [...pending].filter((record) => !hasRecord(record.id));
+  const current = storeRevision() + ':' + pricingRevision() + (staged.length ? ':' + staged.map((record) => record.id).join(',') : '');
   if (current !== revision) {
     const raw = new Map<string, TurnRecord[]>();
-    for (const record of allRecords()) {
+    for (const record of [...allRecords(), ...staged]) {
       const group = raw.get(record.agentId) ?? [];
       group.push(record); raw.set(record.agentId, group);
     }

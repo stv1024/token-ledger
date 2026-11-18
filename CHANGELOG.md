@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.4 (2026-11-18) — requests that do not wait for disk, verified on Paseo 0.16
+
+Requires Paseo **0.11.0 or newer**; verified on 0.16.1. No ledger changes. See the [release notes](docs/releases/v0.8.4.md).
+
+- Answer panel, pill, sidebar, and overview requests without waiting for disk writes. Turns that closed but are not in the ledger file yet are read from memory. Before, each request waited for all queued writes, including a full rewrite of `tracker-retired.json`. On a busy daemon, requests took several seconds or timed out.
+- Append a retired agent to `tracker-retired.jsonl` instead of rewriting `tracker-retired.json`, which holds every agent that ever retired. The snapshot is rewritten only to compact the log. Cost baselines stay exact.
+- Save the ledger and journal first when the plugin stops, then release daemon subscriptions, and wait at most 250 ms for timeline summaries. Before, slow daemon calls at shutdown could use up the host's stop timeout before the journal was saved.
+- Stop refreshing the overview and sidebar on each live usage update. They show ledger totals, so they now refresh when a turn starts or ends, or when agent details change. The pill and panel follow live usage at most once a second.
+- Refresh the provider configuration in the background after the first read, so a busy daemon does not delay requests.
+- Cache price matches per provider and model until prices change, instead of scanning all prices for each turn.
+- Fix the client agent type for the Paseo 0.16 SDK, where `agents.ref` also accepts an `AgentRef`. CI now also checks the 0.16.1 SDK.
+
 ## v0.8.3 (2026-11-02) — tracker journal fixes, verified on Paseo 0.14
 
 Requires Paseo **0.11.0 or newer**; verified on 0.14.0. No ledger changes. See the [release notes](docs/releases/v0.8.3.md).
