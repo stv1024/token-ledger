@@ -1,7 +1,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Text, View } from "react-native";
 import type { Summary, TurnRecord } from "../shared/ledger.ts";
-import { cacheRatio } from "../shared/pricing.ts";
+import { summaryHitRate, usefulHitRate, type HitRate } from "../shared/pricing.ts";
 
 export function fmtTokens(value: number | null): string {
   if (value === null) return "–";
@@ -48,6 +48,19 @@ export function fmtPct(ratio: number | null): string | null {
   const pct = ratio * 100;
   if (pct > 0 && pct < 1) return "<1%";
   return `${Math.round(pct)}%`;
+}
+
+/**
+ * "≤" marks an upper bound; it rounds up so that the shown value stays a true bound.
+ * Bounds of 99.5% or more are dropped (null). Above 99%, one decimal keeps them below "≤100%".
+ */
+export function fmtHitRate(rate: HitRate | null): string | null {
+  const useful = usefulHitRate(rate);
+  if (useful === null) return null;
+  if (!useful.upperBound) return fmtPct(useful.ratio);
+  const pct = useful.ratio * 100;
+  if (pct > 99) return `≤${(Math.ceil(pct * 10 - 1e-9) / 10).toFixed(1)}%`;
+  return `≤${Math.ceil(pct - 1e-9)}%`;
 }
 
 export function fmtDuration(ms: number | null): string {
@@ -126,8 +139,10 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
   const costValue = cost ? `${summary.estimatedTurns > 0 ? '≈' : ''}${cost}` : 'unknown';
   const costLabel = ['known cost', summary.partialCostTurns > 0 ? `${summary.partialCostTurns} partial` : null,
     summary.unpricedTurns > 0 ? `${summary.unpricedTurns} unknown` : null].filter(Boolean).join(' · ');
-  // Only turns with a complete prompt count; a rate over part of the turns says how many it leaves out.
-  const hit = fmtPct(cacheRatio(summary.promptCached ?? null, summary.promptTokens ?? null));
+  // Turns without a known cache write make the value an upper bound (≤); the label counts turns left out.
+  // A bound near 100% says nothing, so it shows "?"; "–" means no turn gives a rate or a bound.
+  const rate = summaryHitRate(summary);
+  const hit = fmtHitRate(rate);
   const unknownHit = summary.unknownPromptTurns ?? 0;
   const hitLabel = hit && unknownHit > 0 ? `cache hit · ${unknownHit} unknown` : 'cache hit';
   return (
@@ -137,7 +152,7 @@ export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme:
         <Stat label="known input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
         <Stat label="cache read" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
         <Stat label="cache write" value={fmtTokens(summary.cacheWrite ?? null)} theme={theme} dense={dense} />
-        <Stat label={hitLabel} value={hit ?? '–'} theme={theme} dense={dense} />
+        <Stat label={hitLabel} value={hit ?? (rate ? '?' : '–')} theme={theme} dense={dense} />
         <Stat label="known output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
         <Stat label={costLabel} value={costValue} theme={theme} dense={dense} />
       </View>

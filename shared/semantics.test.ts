@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { freshInput, promptTokens, tokenScope, usageSemantics } from './semantics.ts';
+import { freshInput, minPromptTokens, promptTokens, tokenScope, usageSemantics } from './semantics.ts';
 
 test('harness-normalized input is not normalized a second time', () => {
   assert.equal(freshInput(usageSemantics('omp'), 160290, 2511639), 160290);
@@ -27,4 +27,16 @@ test('prompt coverage follows the raw harness convention, not missing-value arit
   assert.equal(promptTokens('codex', { input: 100, cached: 80 }), 100);
   assert.equal(promptTokens('codex', { input: 100, cached: 120 }), null);
   assert.equal(promptTokens('unknown', { input: 100, cached: 80, cacheWrite: 0 }), null);
+});
+
+test('prompt floor is input + read only when the cache write alone is missing', () => {
+  assert.equal(minPromptTokens('claude', { input: 6, cached: 70751 }), 70757);
+  assert.equal(minPromptTokens('claude', { input: 6, cached: 70751, cacheWrite: 45829 }), 116586);
+  assert.equal(minPromptTokens('omp', { input: 100, cached: 300 }), 400);
+  assert.equal(minPromptTokens('claude', { input: null, cached: 300 }), null);
+  assert.equal(minPromptTokens('claude', { input: 100, cached: null }), null);
+  // Codex input already contains reads and writes; inconsistent counts give no floor.
+  assert.equal(minPromptTokens('codex', { input: 100, cached: 80 }), 100);
+  assert.equal(minPromptTokens('codex', { input: 100, cached: 120 }), null);
+  assert.equal(minPromptTokens('unknown', { input: 100, cached: 80 }), null);
 });

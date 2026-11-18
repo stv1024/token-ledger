@@ -6,12 +6,12 @@ import { useLedger } from "./data.ts";
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
-import { cacheRatio } from "../shared/pricing.ts";
+import { hitRate } from "../shared/pricing.ts";
 import {
   fmtCost,
   fmtCostSmall,
   fmtDuration,
-  fmtPct,
+  fmtHitRate,
   fmtResidual,
   fmtTime,
   fmtTokens,
@@ -58,7 +58,7 @@ function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
 function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: number; theme: PluginTheme }) {
   const elapsed = useElapsed(inFlight.startedAt);
   const tokens = tokensLine(inFlight.input, inFlight.cached, inFlight.output, inFlight.cacheWrite);
-  const pct = fmtPct(cacheRatio(inFlight.cached, inFlight.promptTokens));
+  const pct = fmtHitRate(hitRate(inFlight.cached, inFlight.promptTokens, inFlight.minPromptTokens));
   const ctx = inFlight.ctxUsed !== null && inFlight.ctxMax !== null ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : null;
   return (
     <View
@@ -132,7 +132,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
   const cols = turnColumns(dense);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null || record.cacheWrite != null;
   const split = record.costBreakdown;
-  const pct = fmtPct(cacheRatio(record.cached, record.promptTokens));
+  const pct = fmtHitRate(hitRate(record.cached, record.promptTokens, record.minPromptTokens));
   const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
   const costDetail = record.pricingWarning ? 'price config' :
     record.costSource === "override"

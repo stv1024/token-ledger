@@ -348,7 +348,7 @@ function inFlightFor(agentId: string): InFlight | null {
   return {
     ...(open.usageGap ? { usageGap: true } : {}),
     turnId: open.turnId, startedAt: open.startedAt, modelCalls: row.modelCalls,
-    tokenScope: row.tokenScope, promptTokens: row.promptTokens, partialCost: row.partialCost,
+    tokenScope: row.tokenScope, promptTokens: row.promptTokens, minPromptTokens: row.minPromptTokens, partialCost: row.partialCost,
     pricingWarning: row.pricingWarning,
     input: row.input, cached: row.cached, cacheWrite: row.cacheWrite, output: row.output,
     effectiveCostUsd: row.effectiveCostUsd, costSource: row.costSource,

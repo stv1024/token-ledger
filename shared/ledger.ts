@@ -70,6 +70,8 @@ export const TurnRowSchema = TurnRecordSchema.extend({
   tokenScope: z.enum(['turn', 'session', 'unknown']),
   /** Null when the prompt denominator cannot be established. */
   promptTokens: z.number().nullable(),
+  /** Lower bound of the prompt: promptTokens, or input + read when only the cache write is unknown. */
+  minPromptTokens: z.number().nullable().optional(),
   incompleteUsage: z.boolean(),
   /** Some components or rates are unavailable; cost is only a partial estimate. */
   partialCost: z.boolean(),
@@ -87,6 +89,7 @@ export const InFlightSchema = z.object({
   modelCalls: z.number().nullable(),
   tokenScope: z.enum(['turn', 'session', 'unknown']),
   promptTokens: z.number().nullable(),
+  minPromptTokens: z.number().nullable().optional(),
   partialCost: z.boolean(),
   pricingWarning: z.string().nullable(),
   input: z.number().nullable(),
@@ -121,7 +124,11 @@ export const SummarySchema = z.object({
   promptTokens: z.number().nullable().optional(),
   /** Cache reads of the same turns, so promptCached / promptTokens is the hit rate. */
   promptCached: z.number().nullable().optional(),
-  /** Turns left out of the hit rate because the prompt denominator is unknown. */
+  /** Prompt floors (input + read) of turns whose cache write is unknown. Kept apart from complete prompts. */
+  promptFloorTokens: z.number().nullable().optional(),
+  /** Cache reads of the same turns; with them, the summary rate is only an upper bound. */
+  promptFloorCached: z.number().nullable().optional(),
+  /** Turns left out of the hit rate because even a prompt floor is unknown. */
   unknownPromptTurns: z.number().int().nonnegative().optional(),
 });
 export type Summary = z.infer<typeof SummarySchema>;

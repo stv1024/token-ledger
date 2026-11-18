@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CostSource, TurnRecord, TurnRow } from "../shared/ledger.ts";
 import { canonicalModel, costBreakdownWithPricing, knownCost, modelPricing, partialCost, type CostBreakdown, type ModelPricing } from "../shared/pricing.ts";
-import { freshInput, promptTokens, providerBasesRevision, tokenScope, usageSemantics } from "../shared/semantics.ts";
+import { freshInput, minPromptTokens, promptTokens, providerBasesRevision, tokenScope, usageSemantics } from "../shared/semantics.ts";
 import { getPreferences, preferencesRevision } from './preferences.ts';
 
 type PriceTier = ModelPricing & { upToInputTokens?: number };
@@ -272,6 +272,7 @@ export function enrichTurn(record: TurnRecord, seq: number): TurnRow {
     // Historical session/unknown rows counted snapshots, not model calls.
     modelCalls: scope === 'turn' ? record.modelCalls : null,
     promptTokens: promptTokens(harness, record),
+    minPromptTokens: minPromptTokens(harness, record),
     incompleteUsage: scope !== 'turn' || record.quality !== 'exact' || !!record.usageGap
       || input === null || record.cached === null || record.cacheWrite == null || record.output === null,
     partialCost: reported === null && (estimated.partialCost || record.quality !== 'exact' || !!record.usageGap),

@@ -82,3 +82,18 @@ export function promptTokens(provider: string | null, usage: {
   if (usage.cached === null || usage.cacheWrite == null) return null;
   return usage.input + usage.cached + usage.cacheWrite;
 }
+
+/**
+ * Smallest prompt the known counts allow. It is the complete prompt when that is known.
+ * When only the cache write is missing (Claude/OMP), it is input + read, so read / floor
+ * is an upper bound of the hit rate. Codex input already contains the write.
+ */
+export function minPromptTokens(provider: string | null, usage: {
+  input: number | null; cached: number | null; cacheWrite?: number | null;
+}): number | null {
+  const complete = promptTokens(provider, usage);
+  if (complete !== null) return complete;
+  const semantics = usageSemantics(provider);
+  if (!semantics || semantics.inputIncludesCached || usage.input === null || usage.cached === null) return null;
+  return usage.input + usage.cached;
+}
