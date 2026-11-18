@@ -117,6 +117,12 @@ export const SummarySchema = z.object({
   incompleteTurns: z.number().int().nonnegative(),
   partialCostTurns: z.number().int().nonnegative(),
   pricingWarningTurns: z.number().int().nonnegative(),
+  /** Complete prompts (fresh input + cache read + cache write) of turns with a known denominator. */
+  promptTokens: z.number().nullable().optional(),
+  /** Cache reads of the same turns, so promptCached / promptTokens is the hit rate. */
+  promptCached: z.number().nullable().optional(),
+  /** Turns left out of the hit rate because the prompt denominator is unknown. */
+  unknownPromptTurns: z.number().int().nonnegative().optional(),
 });
 export type Summary = z.infer<typeof SummarySchema>;
 
