@@ -1,6 +1,6 @@
 import type { PaseoAgent } from "./paseo-types.ts";
 import type { PluginButtonIconProps, PluginButtonRegistration, PluginClientContext } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/ui";
 import { useLedger } from "./data.ts";
 import { useEffect } from "react";
 import { subscribeAgents } from "../shared/agents.ts";

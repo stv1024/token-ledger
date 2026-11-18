@@ -1,7 +1,7 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useAgent, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
-import { ScrollView } from "@getpaseo/plugin/client/react-native";
+import { ScrollView } from "@getpaseo/plugin/client/ui";
 import { useLedger } from "./data.ts";
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
@@ -228,7 +228,7 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
   );
 }
 
-export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
+export function TokenLedgerPanel({ theme, layout, params: { agentId } }: PluginAgentPanelProps) {
   const { dense, setWidth } = useDenseLayout(layout.compact);
   const { data, error } = useLedger(agentId);
   const pricingWarnings = [...new Set(data?.records.flatMap((record) => record.pricingWarning ? [record.pricingWarning] : []) ?? [])];

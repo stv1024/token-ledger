@@ -1,6 +1,6 @@
 import { closeTurn, createState, markUsageGap, reconcileUsage, noteUsage, startLifecycleTurn, streamTurn, endLifecycleTurn, type AgentState, type AgentSnapshotLike } from "./turns.ts";
 import { loadJournal, saveJournal } from "./journal.ts";
-import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
+import type { PluginHookPayload } from "@getpaseo/plugin/server";
 import { subscribeAgents } from "../shared/agents.ts";
 import type { CatalogSubscription } from '../shared/catalog-subscription.ts';
 import type { PaseoAgent, PaseoAgentTimelineEvent, PaseoApi } from "./paseo-types.ts";
@@ -142,7 +142,7 @@ function scheduleSettle(agentId: string, state: AgentState): void {
   };
   terminalTimers.set(key, { timer: setTimeout(settle, session ? SESSION_DRAIN_MS : STREAM_SETTLE_MS), settle });
 }
-export async function observeStart(event: PluginLifecycleEvents["agent.turn_started"], paseo: PaseoApi): Promise<void> {
+export async function observeStart(event: PluginHookPayload<"agent.turn.before">, paseo: PaseoApi): Promise<void> {
   await ensureTracker(paseo);
   if (stopped) return;
   const state = stateFor(event.agent.id);
@@ -150,7 +150,7 @@ export async function observeStart(event: PluginLifecycleEvents["agent.turn_star
   persist(startLifecycleTurn(event.agent.id, state, event.turnId, new Date().toISOString()));
   await prepareAgent(paseo, event.agent.id);
 }
-export async function observeEnd(event: PluginLifecycleEvents["agent.turn_ended"], paseo: PaseoApi): Promise<void> {
+export async function observeEnd(event: PluginHookPayload<"agent.turn.after">, paseo: PaseoApi): Promise<void> {
   await ensureTracker(paseo);
   if (stopped) return;
   const state = stateFor(event.agent.id);
