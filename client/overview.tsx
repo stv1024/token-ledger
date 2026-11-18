@@ -1,7 +1,7 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { type PluginScreenProps } from "@getpaseo/plugin/client";
-import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
+import { Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useOverview } from "./data.ts";
 import { Pressable, Text, View } from "react-native";

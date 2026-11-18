@@ -5,6 +5,6 @@
   "icon": "images/icon.png",
   "media": ["images/screenshot-overview.png", "images/screenshot-panel.png", "images/screenshot-pill.jpg"],
   "requirements": {
-    "paseo": ">=0.11.0"
+    "paseo": ">=0.15.0"
   }
 }

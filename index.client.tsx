@@ -16,11 +16,10 @@ export default function contribute(client: PluginClientContext) {
   const placement = createPanelPlacement();
   client.addSettingsScreen({ id: SETTINGS_SCREEN, title: 'TokenLedger', icon: 'Coins', Component: TokenLedgerSettings });
   client.addTimelineRenderer({ kind: USAGE_TIMELINE_KIND, version: 1, schema: UsageTimelineSchema, Component: UsageTimelineRow });
-  client.addWorkspacePanel({
+  client.addAgentPanel({
     id: "ledger",
     title: "TokenLedger Session Ledger",
     icon: "Coins",
-    context: "agent",
     locations: ["workspace", "explorer"],
     Component: TokenLedgerPanel,
   });

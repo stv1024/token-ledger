@@ -1,15 +1,18 @@
 # Paseo compatibility
 
-TokenLedger's manifest allows **Paseo >=0.11.0**, on both the daemon and the app.
-This policy applies from TokenLedger v0.7.0. v0.6.3 allows `>=0.9.1` and remains
+TokenLedger's manifest allows **Paseo >=0.15.0**, on both the daemon and the app.
+This policy applies from TokenLedger v0.9.0. v0.8.5 allows `>=0.11.0` and
+remains the release for Paseo 0.11-0.14 hosts. v0.6.3 allows `>=0.9.1` and remains
 the release for Paseo 0.9.1-0.10.x hosts.
 
 ## Policy
 
-- **Minimum version:** 0.11.0, because the overview is an `addScreen` screen with
-  URL params and the sidebar entry is an `addSidebarFooterItem` row with
-  `SidebarRow`. Paseo 0.10 and earlier do not have these APIs, and they cannot
-  be tested on a 0.11 machine. Raise the minimum only when a required API cannot
+- **Minimum version:** 0.15.0, because the lifecycle hooks use `addHook`, which
+  Paseo 0.15 added. The deprecated `server.on` / `server.before` it replaces are
+  removed after 2027-04-30, and `/client/react-native` after 2027-04-20.
+  `addAgentPanel` and the `Icon` / `ScrollView` exports of `/client/ui` need
+  0.13.0. Before, the minimum was 0.11.0 for `addScreen` and
+  `addSidebarFooterItem`. Raise the minimum only when a required API cannot
   reasonably be supported on the previous baseline.
 - **No speculative upper limit:** a new Paseo release should not automatically
   disable TokenLedger. Investigate actual API or accounting changes; restrict
@@ -18,7 +21,7 @@ the release for Paseo 0.9.1-0.10.x hosts.
   does not certify untested future behavior. Paseo is still pre-1.0, so a minor
   release can introduce breaking changes even without a major version bump.
 - **Pinned build baseline:** keep `@getpaseo/plugin`, `@getpaseo/client`, and
-  `@getpaseo/protocol` pinned together at 0.11.1 as development dependencies.
+  `@getpaseo/protocol` pinned together at 0.15.0 as development dependencies.
   Shipped code does not import `@getpaseo/client` or `@getpaseo/protocol`: it
   derives those types from the host SDK (`client/paseo-types.ts`,
   `server/paseo-types.ts`, and structural types in `shared/`). Paseo resolves
@@ -27,8 +30,8 @@ the release for Paseo 0.9.1-0.10.x hosts.
   installs do not run `npm install`, and npm installs omit devDependencies, so
   any other type import breaks installation. Updating the host does not require
   updating these pins in lockstep.
-- **Ongoing checks:** CI runs the typecheck and existing tests against 0.11.0,
-  0.11.1, 0.12.0, 0.14.0, 0.16.1, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
+- **Ongoing checks:** CI runs the typecheck and existing tests against 0.15.0
+  (the pin), 0.16.1, and npm `latest`, on pushes, PRs, manual runs, and weekly. These checks
   detect type and SDK regressions; real provider turns remain necessary to
   verify token/cost semantics and host behavior. CI failures do not silently
   rewrite the compatibility range or disable installed plugins.
@@ -50,6 +53,8 @@ exclude beta builds.
 | 0.11.2 | Unreleased accounting fixes: pinned-SDK typecheck, 66 tests, installed-plugin reload, replay of existing Claude/OMP records, real host Web UI overview/pill/panel and live OMP snapshots on 2026-10-14 | Harness scopes and incomplete coverage verified; missing upstream data remains unavailable |
 | 0.14.0 | Installed desktop/daemon, published SDK, typecheck and 78 tests against both the 0.11.1 pin and 0.14.0, directory install, reload and stop on an isolated 0.14.0 daemon, review of real Claude turns recorded since the upgrade on 2026-11-02 | Supported by v0.8.3, which also fixes the tracker journal |
 | 0.16.1 | Installed desktop/daemon, published SDK, typecheck against the 0.11.1 pin, 0.12.0, 0.14.0, and 0.16.1, 84 tests against the 0.11.1 pin and 0.16.1, plugin reload on the installed daemon, and old/new read-model and journal comparison on a copy of real data on 2026-11-18 | Supported by v0.8.4, which also fixes the client agent type for the 0.16 SDK |
+| 0.15.0 | Published SDK, typecheck and 92 tests on 2026-11-18 | Minimum for v0.9.0; no installed host tested |
+| 0.16.1 | `addHook` migration: typecheck and 92 tests against the 0.15.0 pin and 0.16.1, dependency-free compile probe on the installed daemon, real Claude (new and resumed agent) and Codex turns with all three hooks firing on 2026-11-18 | Supported by v0.9.0 |
 
 The 0.11.1 investigation found:
 
@@ -176,3 +181,18 @@ The 0.15.x and 0.16.x review found:
   0.15). `addWorkspacePanel` with `context: "agent"` is deprecated in favor of
   `addAgentPanel` (from 0.13), without a removal date yet. One release that raises the
   minimum to 0.16 can move all of them before 2027-04-20.
+
+The v0.9.0 migration off deprecated APIs found:
+
+- The minimum is 0.15.0, not 0.16: `addHook` is the newest API that the
+  migration needs. Subscriptions stay out of this change; the overview, pill,
+  and panel still poll. Using subscriptions would raise the minimum to 0.16.
+- `addHook` names: `agent.session_open` (before) is `agent.open.before`,
+  `agent.turn_started` is `agent.turn.before`, and `agent.turn_ended` is
+  `agent.turn.after`. The payloads keep the fields TokenLedger reads
+  (`request.reason`, `request.purpose`, `request.agentId`, `agent`, `turnId`,
+  `outcome`). `addHook` handlers must return a Promise. In 0.15
+  `agent.turn.after` still has the empty `timeline` field; 0.16 removes it.
+- On the installed 0.16.1 daemon, `agent.open.before` fired for `create` and
+  `refresh`, and both turn hooks fired for a new Claude agent, a resumed Claude
+  agent, and a Codex agent. Each turn gave one `completed` record.

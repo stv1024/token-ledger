@@ -1,6 +1,6 @@
 # AGENTS.md — 开发调试速查
 
-TokenLedger 最低支持 Paseo v0.11.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.11.1；已验证宿主 0.11.1、0.12.0、0.14.0、0.16.1）。0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
+TokenLedger 最低支持 Paseo v0.15.0，不设版本上限（id `token-ledger`，SDK 开发依赖固定 0.15.0；已验证宿主 0.16.1）。0.11–0.14 用户留在 v0.8.5，0.9.1–0.10.x 用户留在 v0.6.3。允许加载不代表所有未来版本均已实测；兼容策略与验证记录见 `docs/compatibility.md`。**若存在 `AGENTS.local.md`（gitignore，本机专用），先读它——本机路径、工具链怪癖、测试 provider、账号事项都在那里，其内容优先于本文件。**
 
 ## UI 设计理念
 
@@ -35,8 +35,8 @@ paseo agent archive <id>                                  # 测完归档，别�
 
 ## 架构要点（从 daemon 源码验证过，别只信官方文档）
 
-- 自 0.8 起必须分离入口：`index.client.tsx` / `index.server.ts`，代码分别放 `client/`、`server/`、`shared/`。文件后缀不再划分边界；禁止跨端 import。当前 manifest 声明 `requirements.paseo: ">=0.11.0"`；不要仅因宿主次版本升级而新增上限。只有采用必要的新 API 或确认破坏性变更时才调整范围，实测版本单独记录。
-- 服务端 contribute 拿到 `handle/on/before`，`paseo` 在 RPC 和生命周期回调中提供。`before(agent.session_open)` 启动订阅，`on(agent.turn_started)` 覆盖 reload 后已有会话；客户端 ensure 尽早连接已有会话。**新建 agent 在 session_open 时尚未进入目录，不能在此 refresh 新 agent。**
+- 自 0.8 起必须分离入口：`index.client.tsx` / `index.server.ts`，代码分别放 `client/`、`server/`、`shared/`。文件后缀不再划分边界；禁止跨端 import。当前 manifest 声明 `requirements.paseo: ">=0.15.0"`；不要仅因宿主次版本升级而新增上限。只有采用必要的新 API 或确认破坏性变更时才调整范围，实测版本单独记录。
+- 服务端 contribute 用 `handle` 和 `addHook`（0.15 起；已弃用的 `on/before` 不再用），`paseo` 在 RPC 和 hook 回调中提供。`addHook("agent.open.before")` 启动订阅，`addHook("agent.turn.before")` 覆盖 reload 后已有会话，`addHook("agent.turn.after")` 给出 outcome；hook 回调必须返回 Promise。客户端 ensure 尽早连接已有会话。**新建 agent 在 agent.open.before 时尚未进入目录，不能在此 refresh 新 agent。**
 - **wire 层 `agent_stream` 没有 `usage_updated`**：轮中 usage 走 `agent_update` upsert 快照（`lastUsage`/`activeTurn`），且必须先 `paseo.agents.list({ subscribe: {} })` 才会推送。turn 生命周期（started/completed/failed/canceled + turnId + 轮末 usage）走 `agents.ref(id).timeline.subscribe`。
 - usage 语义（2026-09-04 实测）：Claude 轮末 usage 是**逐轮**汇总、`totalCostUsd` 是**会话累计**（所以记录里存 delta + raw 两份）；Codex 每次模型请求报一次 `last` 值，多请求轮靠去重求和。快照会把上一轮旧 usage 回放进新一轮——tracker 用 agent 级 `lastObservation` 基线挡掉。
 - **Paseo 0.11.2 仍丢弃 cache creation**：Claude `buildResultUsage` 只映射普通输入、cache read、输出与 SDK 报告费用。缺失不等于零；命中率必须有完整分母。write 未知时（Claude/OMP）只能显示上限 `read / (input + read)`，带 `≤`、向上取整（99% 以上取一位小数），上限 ≥99.5% 时显示 `?`（`usefulHitRate`，单轮和汇总相同）（`minPromptTokens`）；汇总里完整分母（`promptTokens/promptCached`）和下限分母（`promptFloorTokens/promptFloorCached`）分字段存放，只在显示时合并，有下限分母参与就整体显示 `≤`。`costUsd` 只是运行器报告费用，不保证等于网关实际扣款；分项估算残差不得反推 write token。
@@ -88,11 +88,11 @@ paseo agent archive <id>                                  # 测完归档，别�
 - **background workspace 默认被过滤**：0.12 的 `agents.list` / `workspaces.list` 及其 update 流不带 `filter.includeBackground` 时排除 background workspace，被过滤的 agent 以 `remove` 推送。MCP 新建 workspace 会继承调用方的 background，子 agent 常在其中。所有目录 list 都经 `shared/background.ts` 的 `includingBackground`；同一订阅的翻页必须沿用 open 时的 filter。0.12+ 客户端 SDK 连旧 daemon 会抛 "Update the host to use background workspaces."，回退为无 filter，不抬高最低版本。
 - **`remove` 不等于删除**：tracker 收到 update 流的 `remove` 后先 `agents.ref(id).refresh()` 确认（按 ID 不受 background 过滤），agent 仍在则保留 open turn，确认消失才 retire。
 - CLI 的 `paseo agent archive <id>` 找不到 background agent；测试后用 `paseo workspace archive` 和 `paseo project delete` 清理。
-- 0.12 编译器允许 type-only import `@getpaseo/protocol/*` 子路径，但最低版本仍是 0.11，上面的 import 禁令不变。`/client/react-native` 自 0.13 弃用，2027-04-20 后移除；`Icon`/`ScrollView` 到 0.13.0 才进 `/client/ui`，所以迁移要把最低版本提到 0.13.0，在该日期前做。
+- 0.12 编译器允许 type-only import `@getpaseo/protocol/*` 子路径，但上面的 import 禁令不变。`Icon`/`ScrollView` 从 `/client/ui` 导入（0.13 起有）；`/client/react-native` 已弃用，2027-04-20 后移除，不要再用。
 
 ## 0.13 / 0.14 适配约束
 
-- 0.13 起 `turn_ended` hook 的 `timeline` 为空；TokenLedger 只读 `turnId` 和 `outcome`，不受影响。
+- 0.13 起 turn 结束 hook 的 `timeline` 为空（0.16 删除该字段）；TokenLedger 只读 `turnId` 和 `outcome`，不受影响。
 - 0.14 空闲一小时后释放可释放的 runtime，下个 prompt 时 resume 同一 session。实测升级后的 Claude 轮次在 1 小时到 2 天的空闲间隔后 `totalCostUsd` 仍连续，首轮费用未丢；计数下降（如 daemon 重启）仍记 unknown，不猜测。
 - 0.13 的 connected hosts、file panels、translations 和 0.14 的 per-agent tools、session MCP 都不需要。
 
@@ -102,7 +102,7 @@ paseo agent archive <id>                                  # 测完归档，别�
 - `stopTracker` 先落盘（结算 terminal timer、drain、flushStore），再释放 daemon 订阅；timeline 摘要最多等 250ms。宿主停插件有超时，daemon 忙时释放订阅可能很慢。
 - 客户端：总览只显示账本汇总和 active，不随 `lastUsage` 刷新；只有 agent 查询（pill/panel）跟随 lastUsage，节流 1s。
 - 0.16 客户端 `agents.ref` 参数多了 `AgentRef`，`PaseoAgent` 改为从 `agents.subscribe` 的 upsert 事件推导。
-- 订阅（`defineSubscription`/`useSubscription`/`client.subscribe`）0.16 才有，`addHook` 0.15 才有，`addAgentPanel` 0.13 才有（均已查 SDK d.ts）。用订阅就要把最低版本提到 0.16，v0.8.4 没用。`/client/react-native` 2027-04-20 后移除，`server.on/before` 2027-04-30 后移除；在 2027-04-20 前做一次提最低版本的迁移，届时把轮询换成订阅推送。
+- 订阅（`defineSubscription`/`useSubscription`/`client.subscribe`）0.16 才有，`addHook` 0.15 才有，`addAgentPanel` 0.13 才有（均已查 SDK d.ts）。v0.9.0 已把最低版本提到 0.15，迁出 `/client/react-native`、`server.on/before` 和 `addWorkspacePanel({ context: "agent" })`（面板改 `addAgentPanel`，从 `params.agentId` 取 agent）。订阅推送没做：要把最低版本提到 0.16，总览、徽标、面板仍是轮询。
 
 ## 截图
 
